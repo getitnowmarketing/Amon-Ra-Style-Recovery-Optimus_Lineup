@@ -1439,13 +1439,13 @@ show_menu_other()
 #define ITEM_OTHER_RE2SD  1
 #define ITEM_OTHER_KEY_TEST 2
 //#define ITEM_OTHER_BATTERY_LEVEL 3
-#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3
+//#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
-			     "- DANGEROUS!! Wipe /system",	
+			     //"- DANGEROUS!! Wipe /system",	
 				NULL };
 
     ui_start_menu(headers, items);
@@ -1506,7 +1506,9 @@ show_menu_other()
 				check_my_battery_level();
 				break;
 */
-            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
+
+		/*Commented out code too dangerous*/
+/*            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /system");
                     ui_print("\nDangerous & Irreversible!!!\n");
@@ -1522,7 +1524,7 @@ show_menu_other()
                     }
                     if (!ui_text_visible()) return;
                     break;
-
+*/
 		}
 
             // if we didn't return from this function to reboot, show
