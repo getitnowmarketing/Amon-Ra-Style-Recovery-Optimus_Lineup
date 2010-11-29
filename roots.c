@@ -53,7 +53,7 @@ static RootInfo g_roots[] = {
     { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file },
     { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw },
     { "SDCARD:", "/dev/block/mmcblk0p1", "/dev/block/mmcblk0", NULL, "/sdcard", "vfat" },
-    { "SDEXT:", "/dev/block/mmcblk0p2", NULL, NULL, "/sd-ext", "auto" },
+    { "SDEXT:", "/dev/block/mmcblk0p2", NULL, NULL, "/sd-ext", "ext4" },
     { "SYSTEM:", g_mtd_device, NULL, "system", "/system", "yaffs2" },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL },
@@ -369,7 +369,7 @@ format_root_device(const char *root)
         }
     }
 //TODO: handle other device types (sdcard, etc.)
-    LOGW("format_root_device: can't handle non-mtd device \"%s\"\n", root);
-    return -1;
-//	return format_non_mtd_device(root);
+   /* LOGW("format_root_device: can't handle non-mtd device \"%s\"\n", root);
+    return -1; */
+	return format_non_mtd_device(root);
 }

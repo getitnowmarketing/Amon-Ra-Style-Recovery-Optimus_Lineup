@@ -29,7 +29,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
-#include <termios.h> 
+#include <termios.h>
+#include <sys/stat.h>
 
 #include "bootloader.h"
 #include "commands.h"
@@ -59,6 +60,9 @@ static const char *NANDROID_PATH = "SDCARD:/nandroid/";
 #define NANDROID_PATH_LENGTH 17
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 
+void free_string_array(char** array);
+char* choose_file_menu(const char* directory, const char* fileExtensionOrDirectory, const char* headers[]);
+char** gather_files(const char* directory, const char* fileExtensionOrDirectory, int* numFiles);
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -298,45 +302,13 @@ erase_root(const char *root)
     return format_root_device(root);
 }
 
-static void
-run_script(char *str1,char *str2,char *str3,char *str4,char *str5,char *str6,char *str7)
-{
-	ui_print(str1);
-        ui_clear_key_queue();
-	ui_print("\nPress Menu to confirm,");
-       	ui_print("\nany other key to abort.\n");
-	int confirm = ui_wait_key();
-		if (confirm == KEY_MENU) {
-                	ui_print(str2);
-		        pid_t pid = fork();
-                	if (pid == 0) {
-                		char *args[] = { "/sbin/sh", "-c", str3, "1>&2", NULL };
-                	        execv("/sbin/sh", args);
-                	        fprintf(stderr, str4, strerror(errno));
-                	        _exit(-1);
-                	}
-			int status;
-			while (waitpid(pid, &status, WNOHANG) == 0) {
-				ui_print(".");
-               		        sleep(1);
-			}
-                	ui_print("\n");
-			if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
-                		ui_print(str5);
-                	} else {
-                		ui_print(str6);
-                	}
-		} else {
-	       		ui_print(str7);
-       	        }
-		if (!ui_text_visible()) return;
-}
+
 
 static void
 choose_nandroid_file(const char *nandroid_folder)
 {
     static char* headers[] = { "Choose nandroid-backup,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
                                "",
                                NULL };
 
@@ -503,7 +475,7 @@ static void
 choose_nandroid_folder()
 {
     static char* headers[] = { "Choose Device-ID,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
                                "",
                                NULL };
 
@@ -622,135 +594,266 @@ out:
     free(list);
 }
 
-
-
-static void
-choose_update_file()
+char** gather_files(const char* directory, const char* fileExtensionOrDirectory, int* numFiles)
 {
-    static char* headers[] = { "Choose update ZIP file,",
-			       "or press BACK to return",
-                               "",
-                               NULL };
-
     char path[PATH_MAX] = "";
     DIR *dir;
     struct dirent *de;
-    char **files;
-    char **list;
     int total = 0;
     int i;
+    char** files = NULL;
+    int pass;
+    *numFiles = 0;
+    int dirLen = strlen(directory);
 
-    if (ensure_root_path_mounted(SDCARD_PATH) != 0) {
-        LOGE("Can't mount %s\n", SDCARD_PATH);
-        return;
-    }
-
-    if (translate_root_path(SDCARD_PATH, path, sizeof(path)) == NULL) {
-        LOGE("Bad path %s", path);
-        return;
-    }
-
-    dir = opendir(path);
+    dir = opendir(directory);
     if (dir == NULL) {
-        LOGE("Couldn't open directory %s", path);
-        return;
+        ui_print("Couldn't open directory.\n");
+        return NULL;
     }
 
-    /* count how many files we're looking at */
-    while ((de = readdir(dir)) != NULL) {
-        char *extension = strrchr(de->d_name, '.');
-        if (extension == NULL || de->d_name[0] == '.') {
-            continue;
-        } else if (!strcasecmp(extension, ".zip")) {
-            total++;
+    int extension_length = 0;
+    if (fileExtensionOrDirectory != NULL)
+        extension_length = strlen(fileExtensionOrDirectory);
+
+    int isCounting = 1;
+    i = 0;
+    for (pass = 0; pass < 2; pass++) {
+        while ((de=readdir(dir)) != NULL) {
+            // skip hidden files
+               if (de->d_name[0] == '.' && de->d_name[1] != '.')
+                continue;
+
+            // NULL means that we are gathering directories, so skip this
+            if (fileExtensionOrDirectory != NULL)
+            {
+                // make sure that we can have the desired extension (prevent seg fault)
+                if (strlen(de->d_name) < extension_length)
+                    continue;
+                // compare the extension
+                if (strcmp(de->d_name + strlen(de->d_name) - extension_length, fileExtensionOrDirectory) != 0)
+                    continue;
+            }
+            else
+            {
+                struct stat info;
+                char fullFileName[PATH_MAX];
+                strcpy(fullFileName, directory);
+                strcat(fullFileName, de->d_name);
+                stat(fullFileName, &info);
+                // make sure it is a directory
+                if (!(S_ISDIR(info.st_mode)))
+                    continue;
+            }
+
+            if (pass == 0)
+            {
+                total++;
+                continue;
+            }
+
+            files[i] = (char*) malloc(dirLen + strlen(de->d_name) + 2);
+            strcpy(files[i], directory);
+            strcat(files[i], de->d_name);
+            if (fileExtensionOrDirectory == NULL)
+                strcat(files[i], "/");
+            i++;
         }
+        if (pass == 1)
+            break;
+        if (total == 0)
+            break;
+        rewinddir(dir);
+        *numFiles = total;
+        files = (char**) malloc((total+1)*sizeof(char*));
+        files[total]=NULL;
+    }
+
+    if(closedir(dir) < 0) {
+        LOGE("Failed to close directory.");
     }
 
     if (total==0) {
-        LOGE("No zip files found\n");
-	    /* close directory handle */
-    		if (closedir(dir) < 0) {
-		  LOGE("Failure closing directory %s", path);
-	          goto out;
-    		}
-        return;
+        return NULL;
     }
+	// sort the result
+	 if (files != NULL) {
+		for (i = 0; i < total; i++) {
+			int curMax = -1;
+			int j;
+			for (j = 0; j < total - i; j++) {
+				if (curMax == -1 || strcmp(files[curMax], files[j]) < 0)
+					curMax = j;
+			}
+			char* temp = files[curMax];
+			files[curMax] = files[total - i - 1];
+			files[total - i - 1] = temp;
+		}
+	}
 
-    /* allocate the array for the file list menu */
-    files = (char **) malloc((total + 1) * sizeof(*files));
-    files[total] = NULL;
+    return files;
+}
 
-    list = (char **) malloc((total + 1) * sizeof(*files));
-    list[total] = NULL;
+int get_file_selection(char** headers, char** list) {
 
-    /* set it up for the second pass */
-    rewinddir(dir);
-
-    /* put the names in the array for the menu */
-    i = 0;
-    while ((de = readdir(dir)) != NULL) {
-        char *extension = strrchr(de->d_name, '.');
-        if (extension == NULL || de->d_name[0] == '.') {
-            continue;
-        } else if (!strcasecmp(extension, ".zip")) {
-            files[i] = (char *) malloc(SDCARD_PATH_LENGTH + strlen(de->d_name) + 1);
-            strcpy(files[i], SDCARD_PATH);
-            strcat(files[i], de->d_name);
-
-            list[i] = (char *) malloc(strlen(de->d_name) + 1);
-            strcpy(list[i], de->d_name);
-
-            i++;
-        }
-    }
-
-    /* close directory handle */
-    if (closedir(dir) < 0) {
-        LOGE("Failure closing directory %s", path);
-        goto out;
-    }
+    // throw away keys pressed previously, so user doesn't
+    // accidentally trigger menu items.
+    ui_clear_key_queue();
 
     ui_start_menu(headers, list);
     int selected = 0;
     int chosen_item = -1;
 
-    finish_recovery(NULL);
-    ui_reset_progress();
-    for (;;) {
+    while (chosen_item < 0 && chosen_item != -9) {
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_BACK) {
-            break;
-        } else if ((key == KEY_VOLUMEDOWN) && visible) {
-            ++selected;
-            selected = ui_menu_select(selected);
-        } else if ((key == KEY_VOLUMEUP) && visible) {
-            --selected;
-            selected = ui_menu_select(selected);
-        } else if ((key == KEY_MENU) && visible ) {
-            chosen_item = selected;
+            switch (key) {
+                case KEY_VOLUMEUP:
+                    --selected;
+                    selected = ui_menu_select(selected);
+                    break;
+                case KEY_VOLUMEDOWN:
+                    ++selected;
+                    selected = ui_menu_select(selected);
+                    break;
+                case KEY_MENU:
+                    chosen_item = selected;
+		    if (chosen_item==0) chosen_item = -9;
+                    break;
+                case KEY_BACK:
+                    chosen_item = -9;
+                    break;
+            }
+
+    }
+
+    ui_end_menu();
+    ui_clear_key_queue();
+    return chosen_item;
+}
+
+
+// pass in NULL for fileExtensionOrDirectory and you will get a directory chooser
+char* choose_file_menu(const char* directory, const char* fileExtensionOrDirectory, const char* headers[])
+{
+    char path[PATH_MAX] = "";
+    DIR *dir;
+    struct dirent *de;
+    int numFiles = 0;
+    int numDirs = 0;
+    int i;
+    char* return_value = NULL;
+    int dir_len = strlen(directory);
+
+    char** files = gather_files(directory, fileExtensionOrDirectory, &numFiles);
+    char** dirs = NULL;
+    if (fileExtensionOrDirectory != NULL)
+        dirs = gather_files(directory, NULL, &numDirs);
+    int total = numDirs + numFiles;
+    if (total == 0)
+    {
+        ui_print("No files found.\n");
+    }
+    else
+    {
+        char** list = (char**) malloc((total + 1) * sizeof(char*));
+        list[total] = NULL;
+
+        for (i = 0 ; i < numDirs; i++)
+        {
+            list[i] = strdup(dirs[i] + dir_len);
         }
 
-        if (chosen_item >= 0) {
-            // turn off the menu, letting ui_print() to scroll output
-            // on the screen.
-            ui_end_menu();
+        for (i = 0 ; i < numFiles; i++)
+        {
+            list[numDirs + i] = strdup(files[i] + dir_len);
+        }
 
-            ui_print("\nInstall : ");
-            ui_print(list[chosen_item]);
-            ui_clear_key_queue();
-            ui_print(" ? \nPress Menu to confirm,");
-            ui_print("\nany other key to abort.\n");
-            int confirm_apply = ui_wait_key();
-            if (confirm_apply == KEY_MENU) {
-                ui_print("\nInstall from sdcard...\n");
-                int status = install_package(files[chosen_item]);
-                if (status != INSTALL_SUCCESS) {
+        for (;;)
+        {
+
+            int chosen_item = get_file_selection(headers, list);
+            if (chosen_item == -9)
+                break;
+
+            static char ret[PATH_MAX];
+            if (chosen_item < numDirs)
+            {
+                char* subret = choose_file_menu(dirs[chosen_item], fileExtensionOrDirectory, headers);
+                if (subret != NULL)
+                {
+                    strcpy(ret, subret);
+                    return_value = ret;
+                    break;
+                }
+                continue;
+            }
+            strcpy(ret, files[chosen_item - numDirs]);
+            return_value = ret;
+            break;
+        }
+        free_string_array(list);
+    }
+
+    free_string_array(files);
+    free_string_array(dirs);
+    return return_value;
+}
+
+
+
+void free_string_array(char** array)
+{
+    if (array == NULL)
+        return;
+    char* cursor = array[0];
+    int i = 0;
+    while (cursor != NULL)
+    {
+        free(cursor);
+        cursor = array[++i];
+    }
+    free(array);
+}
+
+void show_choose_zip_menu()
+{
+    if (ensure_root_path_mounted("SDCARD:") != 0) {
+        LOGE ("Can't mount /sdcard\n");
+        return;
+    }
+
+    static char* headers[] = {  "Choose a zip to apply",
+			        "or press VOL-DOWN to return",
+                                "",
+                                NULL 
+    };
+    
+    char* file = choose_file_menu("/sdcard/", ".zip", headers);
+
+    if (file == NULL)
+        return;
+
+    char sdcard_package_file[1024];
+    strcpy(sdcard_package_file, "SDCARD:");
+    strcat(sdcard_package_file,  file + strlen("/sdcard/"));
+
+    ui_end_menu();
+
+    ui_print("\nInstall : ");
+    ui_print(file + strlen("/sdcard/"));
+    ui_clear_key_queue();
+    ui_print(" ? \nPress Menu to confirm,");
+    ui_print("\nany other key to abort.\n");
+
+    int confirm_apply = ui_wait_key();
+    if (confirm_apply == KEY_MENU) {
+    	ui_print("\nInstall from sdcard...\n");
+        int status = install_package(sdcard_package_file);
+	        if (status != INSTALL_SUCCESS) {
                     ui_set_background(BACKGROUND_ICON_ERROR);
                     ui_print("\nInstallation aborted.\n");
-                } else if (!ui_text_visible()) {
-                    break;  // reboot if logs aren't visible
                 } else {
                     if (firmware_update_pending()) {
                         ui_print("\nReboot via vol-up+vol-down or menu\n"
@@ -762,20 +865,10 @@ choose_update_file()
             } else {
                 ui_print("\nInstallation aborted.\n");
             }
-            if (!ui_text_visible()) break;
-            break;
+            
         }
-    }
 
-out:
 
-    for (i = 0; i < total; i++) {
-        free(files[i]);
-        free(list[i]);
-    }
-    free(files);
-    free(list);
-}
 
 
 static void
@@ -783,28 +876,30 @@ show_menu_wipe()
 {
 
     static char* headers[] = { "Choose wipe item,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
 			       "",
 			       NULL };
 
 
 // these constants correspond to elements of the items[] list.
-#define ITEM_WIPE_DATA     0
-#define ITEM_WIPE_CACHE    1
-#define ITEM_WIPE_DALVIK   2
-#define ITEM_WIPE_EXT      3
-#define ITEM_WIPE_BAT      4
-#define ITEM_WIPE_ROT      5
-#define ITEM_WIPE_ANDROIDSECURE 6
-    
-	static char* items[] = { "- Wipe data/factory reset",
-                             "- Wipe cache",
-                             "- Wipe Dalvik-cache",
-                             "- Wipe SD:ext partition",
-                             "- Wipe battery stats",
-                             "- Wipe rotate settings",
-                             "- Wipe .android_secure",
-				NULL };
+#define ITEM_WIPE_ALL      0
+#define ITEM_WIPE_DATA     1
+#define ITEM_WIPE_EXT      2
+#define ITEM_WIPE_SECURE   3
+#define ITEM_WIPE_CACHE    4
+#define ITEM_WIPE_DALVIK   5
+#define ITEM_WIPE_BAT      6
+#define ITEM_WIPE_ROT      7
+
+    static char* items[] = { "- Wipe ALL userdata",
+			     "- Wipe only /data",
+                             "- Wipe only /sd-ext",
+                             "- Wipe only /sdcard/.android_secure",
+                             "- Wipe only /cache",
+                             "- Wipe only Dalvik-cache",
+                             "- Wipe only battery stats",
+                             "- Wipe only rotate settings",
+                             NULL };
 
     ui_start_menu(headers, items);
     int selected = 0;
@@ -836,102 +931,168 @@ show_menu_wipe()
 
             switch (chosen_item) {
 
+                case ITEM_WIPE_ALL:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe ALL userdata");
+                    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_all = ui_wait_key();
+                    if (confirm_wipe_all == KEY_MENU) {
+                        erase_root("DATA:");
+                        //erase_root("DATADATA:");
+			erase_root("SDCARD:.android_secure");
+                        erase_root("CACHE:");
+			//format_non_mtd_device("CACHE:");
+			//ui_print("Formatting CACHE...\n\n");
+
+			struct stat st;
+        		if (0 != stat("/dev/block/mmcblk0p2", &st))
+		        {
+                        ui_print("Skipping format of /sd-ext.\n");
+		        } else {
+	                        erase_root("SDEXT:");
+			}
+                        ui_print("Userdata wipe complete!\n\n");			
+
+                    } else {
+                        ui_print("Userdata wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
                 case ITEM_WIPE_DATA:
                     ui_clear_key_queue();
-		    ui_print("\nWipe data and cache");
+		    ui_print("\nWipe /data");
                     ui_print("\nPress Menu to confirm,");
-                    ui_print("\nany other key to abort.\n");
+                    ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_data = ui_wait_key();
                     if (confirm_wipe_data == KEY_MENU) {
-                        ui_print("\nWiping data...\n");
                         erase_root("DATA:");
-                        erase_root("CACHE:");
-                        ui_print("\nData wipe complete.\n\n");
+                        //erase_root("DATADATA:");
+			ui_print("/data wipe complete!\n\n");
                     } else {
-                        ui_print("\nData wipe aborted.\n\n");
+                        ui_print("/data wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+                case ITEM_WIPE_EXT:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /sd-ext");
+                    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_ext = ui_wait_key();
+                    if (confirm_wipe_ext == KEY_MENU) {
+                        
+			struct stat st;
+        		if (0 != stat("/dev/block/mmcblk0p2", &st))
+		        {
+                        ui_print("Skipping format of /sd-ext.\n");
+		        } else {
+	                        erase_root("SDEXT:");
+	                        ui_print("/sd-ext wipe complete!\n\n");			
+			}
+                    } else {
+                        ui_print("/sd-ext wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+                case ITEM_WIPE_SECURE:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /sdcard/.android_secure");
+                    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_secure = ui_wait_key();
+                    if (confirm_wipe_secure == KEY_MENU) {
+                        erase_root("SDCARD:.android_secure");
+                        ui_print("/sdcard/.android_secure wipe complete!\n\n");
+                    } else {
+                        ui_print("/sdcard/.android_secure wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
 
                 case ITEM_WIPE_CACHE:
                     ui_clear_key_queue();
-		    ui_print("\nWipe cache");
+		    ui_print("\nWipe /cache");
                     ui_print("\nPress Menu to confirm,");
-                    ui_print("\nany other key to abort.\n");
+                    ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_cache = ui_wait_key();
                     if (confirm_wipe_cache == KEY_MENU) {
-                        ui_print("\nWiping cache...\n");
+                        
                         erase_root("CACHE:");
-                        ui_print("\nCache wipe complete.\n\n");
+                        ui_print("/cache wipe complete!\n\n");
                     } else {
-                        ui_print("\nCache wipe aborted.\n\n");
+                        ui_print("/cache wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
 
+                case ITEM_WIPE_DALVIK:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe Dalvik-cache");
+                    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_dalvik = ui_wait_key();
+                    if (confirm_wipe_dalvik == KEY_MENU) {
+                        ui_print("Formatting DATA:dalvik-cache...\n");
+                        format_non_mtd_device("DATA:dalvik-cache");
+   
+                        ui_print("Formatting CACHE:dalvik-cache...\n");
+                        format_non_mtd_device("CACHE:dalvik-cache");
 
-		case ITEM_WIPE_DALVIK:
-			run_script("\nWipe Dalvik-cache",
-				   "\nWiping Dalvik-cache : ",
-				   "/sbin/wipe dalvik",
-				   "\nUnable to execute wipe!\n(%s)\n",
-				   "\nError : Run 'wipe dalvik' via adb!\n\n",
-				   "\nDalvik-cache wipe complete!\n\n",
-				   "\nDalvik-cache wipe aborted!\n\n");
-			break;
-
-	        case ITEM_WIPE_EXT:
-			run_script("\nWipe ext filesystem",
-				   "\nWiping ext filesystem : ",
-				   "/sbin/wipe ext",
-				   "\nUnable to execute wipe!\n(%s)\n",
-				   "\nError : Run 'wipe ext' via adb!\n\n",
-				   "\nExt wipe complete!\n\n",
-				   "\nExt wipe aborted!\n\n");
-			break;
+			struct stat st;
+        		if (0 != stat("/dev/block/mmcblk0p2", &st))
+		        {
+                        ui_print("Skipping format SDEXT:dalvik-cache.\n");
+		        } else {
+	                        erase_root("SDEXT:dalvik-cache");
+			}
+                        ui_print("Dalvik-cache wipe complete!\n\n");
+                    } else {
+                        ui_print("Dalvik-cache wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
 
 		case ITEM_WIPE_BAT:
-			run_script("\nWipe battery stats",
-				   "\nWiping battery stats : ",
-				   "/sbin/wipe battery",
-				   "\nUnable to execute wipe!\n(%s)\n",
-				   "\nError : Run 'wipe battery' via adb!\n\n",
-				   "\nBattery info wipe complete!\n\n",
-				   "\nBattery info wipe aborted!\n\n");
-			break;
-
-		case ITEM_WIPE_ROT:
-			run_script("\nWipe rotate settings",
-				   "\nWiping rotate settings : ",
-				   "/sbin/wipe rotate",
-				   "\nUnable to execute wipe!\n(%s)\n",
-				   "\nError : Run 'wipe rotate' via adb!\n\n",
-				   "\nRotate settings wipe complete!\n\n",
-				   "\nRotate settings wipe aborted!\n\n");
-			break;
-            	
-		case ITEM_WIPE_ANDROIDSECURE:
                     ui_clear_key_queue();
-		    ui_print("\nWipe .android_secure");
+		    ui_print("\nWipe battery stats");
                     ui_print("\nPress Menu to confirm,");
-                    ui_print("\nany other key to abort.\n");
-                    int confirm_wipe_android_secure = ui_wait_key();
-                    if (confirm_wipe_android_secure == KEY_MENU) {
-                             run_script("\nWipe .android_secure",
-					"\nWiping .android_secure : ",
-					"/sbin/wipe android_secure",
-				   	"\nUnable to execute wipe!\n(%s)\n",
-				   	"\nError : Run 'wipe android_secure' via adb!\n\n",
-				  	 "\n.android_secure wipe complete!\n\n",
-				   	"\nandroid_secure wipe aborted!\n\n");
-			ui_print("\n.android_secure wipe complete.\n\n");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_bat = ui_wait_key();
+                    if (confirm_wipe_bat == KEY_MENU) {
+                        ui_print("Wiping battery stats...\n");
+                        wipe_battery_stats();
+                        ui_print("Battery wipe complete!\n\n");
                     } else {
-                        ui_print("\n.android_secure wipe aborted.\n\n");
+                        ui_print("Battery wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
-          
-  }
+
+		case ITEM_WIPE_ROT:
+		    ui_clear_key_queue();
+		    ui_print("\nWipe rotate settings");
+                    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_rot = ui_wait_key();
+                    if (confirm_wipe_rot == KEY_MENU) {
+                        ui_print("Wiping rotate settings...\n");
+                        wipe_rotate_settings();
+                        ui_print("Rotate settings wipe complete!\n\n");
+                    } else {
+                        ui_print("Rotate settings wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+
+
+			break;
+            
+            }
 
             // if we didn't return from this function to reboot, show
             // the menu again.
@@ -954,7 +1115,7 @@ show_menu_br()
 {
 
     static char* headers[] = { "Choose backup/restore item;",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
 			       "",
 			       NULL };
 
@@ -1097,7 +1258,7 @@ show_menu_partition()
 {
 
     static char* headers[] = { "Choose partition item,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
 			       "",
 			       NULL };
 
@@ -1151,7 +1312,7 @@ show_menu_partition()
 			int confirm = ui_wait_key();
 				if (confirm == KEY_MENU) {
 	                                ui_clear_key_queue();
-				       	ui_print("\n\nUse trackball or volume-keys");
+				       	ui_print("\n\nUse Up/Down");
 				       	ui_print("\nto increase/decrease size,");
 				       	ui_print("\nMenu to set (0=NONE) :\n\n");
 					char swapsize[32];
@@ -1269,21 +1430,21 @@ show_menu_other()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
 			       "",
 			       NULL };
 
 // these constants correspond to elements of the items[] list.
 #define ITEM_OTHER_FIXUID 0
 #define ITEM_OTHER_RE2SD  1
-#define ITEM_OTHER_TOGGLE 2
-#define ITEM_OTHER_KEY_TEST 3
+#define ITEM_OTHER_KEY_TEST 2
+//#define ITEM_OTHER_BATTERY_LEVEL 3
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
-                             "- Toggle Signature Verify",
-			     "- Debugging Test Key Codes",
-                             NULL };
+                             "- Debugging Test Key Codes",
+			     //"- Check Battery Level",
+				NULL };
 
     ui_start_menu(headers, items);
     int selected = 0;
@@ -1334,13 +1495,15 @@ show_menu_other()
 				   "\nMoving complete!\n\n",
 				   "\nMoving aborted!\n\n");
 			break;
-		case ITEM_OTHER_TOGGLE:
-				do_verify_switch();
-				break;   
-           
+		
 		case ITEM_OTHER_KEY_TEST:
 				key_logger_test();
 				break;
+/*
+		case ITEM_OTHER_BATTERY_LEVEL:
+				check_my_battery_level();
+				break;
+*/
             }
 
             // if we didn't return from this function to reboot, show
@@ -1358,6 +1521,86 @@ show_menu_other()
         }
     }
 }
+
+static void
+show_menu_flash_zip()
+{
+
+    static char* headers[] = { "Choose item,",
+			       "or press VOL-DOWN to return",
+			       "",
+			       	NULL };
+
+// these constants correspond to elements of the items[] list.
+#define ITEM_FLASH_SDCARD 0
+//#define ITEM_FLASH_EMMC  1
+#define ITEM_FLASH_TOGGLE 1
+
+    static char* items[] = { "- Flash zip from Sdcard",
+			    // "- Flash zip from Emmc",
+                             "- Toggle Signature Verify",
+				NULL };
+
+    ui_start_menu(headers, items);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
+        int visible = ui_text_visible();
+
+        if (key == KEY_BACK) {
+            break;
+        } else if ((key == KEY_VOLUMEDOWN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_VOLUMEUP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_MENU) && visible ) {
+            chosen_item = selected;
+        }
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            switch (chosen_item) {
+
+	        case ITEM_FLASH_SDCARD:
+				show_choose_zip_menu();
+			break;
+
+/*		case ITEM_FLASH_EMMC:
+				show_choose_zip_menu_emmc();
+			break;
+*/		
+		case ITEM_FLASH_TOGGLE:
+				do_verify_switch();
+			break;   
+           
+            }
+
+            // if we didn't return from this function to reboot, show
+            // the menu again.
+            ui_start_menu(headers, items);
+            selected = 0;
+            chosen_item = -1;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+        }
+    }
+}
+
 
 static void
 create_mount_items(char *items[],int item)
@@ -1470,7 +1713,7 @@ show_menu_usb()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press BACK to return",
+			       "or press VOL-DOWN to return",
 			       "",
 			       	NULL };
 
@@ -1558,7 +1801,7 @@ prompt_and_wait()
 #define ITEM_FLASH         3
 #define ITEM_WIPE          4
 #define ITEM_PARTITION     5
-#define ITEM_MOUNT		   6
+#define ITEM_MOUNT	   6
 #define ITEM_OTHER         7
 #define ITEM_POWEROFF      8
 
@@ -1566,11 +1809,11 @@ prompt_and_wait()
     static char* items[] = { "- Reboot system now",
                              "- USB-MS toggle",
                              "- Backup/Restore",
-                             "- Flash zip from sdcard",
+                             "- Flash zip menu",
                              "- Wipe",
                              "- Partition sdcard",
                              "- Mounts",
-							 "- Other",
+			     "- Other",
                              "- Power off",
                              NULL };
 
@@ -1621,7 +1864,7 @@ prompt_and_wait()
                     break;
 
 		case ITEM_FLASH:
-                    choose_update_file();
+                    show_menu_flash_zip();
                     break;
 
                 case ITEM_WIPE:

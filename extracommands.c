@@ -52,6 +52,12 @@ To handle formatting non yaffs2 partitions like the ext3 /data & /cache on Incre
 
 int do_verify = 1;
 
+void do_verify_switch()
+{
+				do_verify=!do_verify;
+				ui_print("Verification: %s\n",do_verify ? "Enabled" : "Disabled");
+}
+
 void key_logger_test()
 {
 		//finish_recovery(NULL);
@@ -73,13 +79,40 @@ void key_logger_test()
            }               			
 }
 
-void do_verify_switch()
+void run_script(char *str1,char *str2,char *str3,char *str4,char *str5,char *str6,char *str7)
 {
-				do_verify=!do_verify;
-				ui_print("Verification: %s\n",do_verify ? "Enabled" : "Disabled");
+	ui_print(str1);
+        ui_clear_key_queue();
+	ui_print("\nPress Menu to confirm,");
+       	ui_print("\nany other key to abort.\n");
+	int confirm = ui_wait_key();
+		if (confirm == KEY_MENU) {
+                	ui_print(str2);
+		        pid_t pid = fork();
+                	if (pid == 0) {
+                		char *args[] = { "/sbin/sh", "-c", str3, "1>&2", NULL };
+                	        execv("/sbin/sh", args);
+                	        fprintf(stderr, str4, strerror(errno));
+                	        _exit(-1);
+                	}
+			int status;
+			while (waitpid(pid, &status, WNOHANG) == 0) {
+				ui_print(".");
+               		        sleep(1);
+			}
+                	ui_print("\n");
+			if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0)) {
+                		ui_print(str5);
+                	} else {
+                		ui_print(str6);
+                	}
+		} else {
+	       		ui_print(str7);
+       	        }
+		if (!ui_text_visible()) return;
 }
 
-/*
+
 
 // This was pulled from bionic: The default system command always looks
 // for shell in /system/bin/sh. This is bad.
@@ -126,6 +159,18 @@ __system(const char *command)
 int format_non_mtd_device(const char* root)
 
 {
+
+   // if this is SDEXT:, don't worry about it.
+    if (0 == strcmp(root, "SDEXT:"))
+    {
+        struct stat st;
+        if (0 != stat("/dev/block/mmcblk0p2", &st))
+        {
+            ui_print("No app2sd partition found. Skipping format of /sd-ext.\n");
+            return 0;
+        }
+    }
+
     char path[PATH_MAX];
     translate_root_path(root, path, PATH_MAX);
     if (0 != ensure_root_path_mounted(root))
@@ -144,7 +189,7 @@ int format_non_mtd_device(const char* root)
     ensure_root_path_unmounted(root);
     return 0;
 }
-*/
+
 void usb_toggle_sdcard()
 {
 	ui_print("\nEnabling USB-MS : ");
@@ -246,4 +291,26 @@ void usb_toggle_emmc()
 				} 
              }
    }	
+*/
+void wipe_battery_stats()
+{
+    ensure_root_path_mounted("DATA:");
+    remove("/data/system/batterystats.bin");
+    ensure_root_path_unmounted("DATA:");
+}
+
+void wipe_rotate_settings()
+{
+    ensure_root_path_mounted("DATA:");
+    __system("rm -r /data/misc/akmd*");
+    __system("rm -r /data/misc/rild*");    
+    ensure_root_path_unmounted("DATA:");
+}     
+
+/*
+void check_my_battery_level()
+{
+	
+	__system("cat /sys/class/power_supply/battery/capacity");
+}
 */
