@@ -308,7 +308,7 @@ static void
 choose_nandroid_file(const char *nandroid_folder)
 {
     static char* headers[] = { "Choose nandroid-backup,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
                                "",
                                NULL };
 
@@ -475,7 +475,7 @@ static void
 choose_nandroid_folder()
 {
     static char* headers[] = { "Choose Device-ID,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
                                "",
                                NULL };
 
@@ -825,7 +825,7 @@ void show_choose_zip_menu()
     }
 
     static char* headers[] = {  "Choose a zip to apply",
-			        "or press VOL-DOWN to return",
+			        "or press BACK to return",
                                 "",
                                 NULL 
     };
@@ -876,7 +876,7 @@ show_menu_wipe()
 {
 
     static char* headers[] = { "Choose wipe item,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       NULL };
 
@@ -1115,7 +1115,7 @@ show_menu_br()
 {
 
     static char* headers[] = { "Choose backup/restore item;",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       NULL };
 
@@ -1258,7 +1258,7 @@ show_menu_partition()
 {
 
     static char* headers[] = { "Choose partition item,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       NULL };
 
@@ -1430,7 +1430,7 @@ show_menu_other()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       NULL };
 
@@ -1439,11 +1439,13 @@ show_menu_other()
 #define ITEM_OTHER_RE2SD  1
 #define ITEM_OTHER_KEY_TEST 2
 //#define ITEM_OTHER_BATTERY_LEVEL 3
+#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
+			     "- DANGEROUS!! Wipe /system",	
 				NULL };
 
     ui_start_menu(headers, items);
@@ -1504,7 +1506,24 @@ show_menu_other()
 				check_my_battery_level();
 				break;
 */
-            }
+            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /system");
+                    ui_print("\nDangerous & Irreversible!!!\n");
+		    ui_print("\nOnly Used to Fix Corrupted Partition!!!\n");
+		    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_data = ui_wait_key();
+                    if (confirm_wipe_data == KEY_MENU) {
+                        erase_root("SYSTEM:");
+                        ui_print("/system wipe complete!\n\n");
+                    } else {
+                        ui_print("/system wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		}
 
             // if we didn't return from this function to reboot, show
             // the menu again.
@@ -1527,7 +1546,7 @@ show_menu_flash_zip()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       	NULL };
 
@@ -1713,7 +1732,7 @@ show_menu_usb()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       "or press BACK to return",
 			       "",
 			       	NULL };
 
