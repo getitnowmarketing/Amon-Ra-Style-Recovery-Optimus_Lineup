@@ -868,15 +868,15 @@ show_menu_nandroid()
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == KEY_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == KEY_VOLUMEDOWN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == KEY_VOLUMEUP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == KEY_MENU) && visible ) {
             chosen_item = selected;
         }
         
