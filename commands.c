@@ -40,6 +40,7 @@
 #include "roots.h"
 
 #include "extracommands.h"
+
 static int gDidShowProgress = 0;
 
 #define UNUSED(p)   ((void)(p))

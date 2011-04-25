@@ -395,7 +395,7 @@ exit:
 static int
 handle_update_package(const char *path, ZipArchive *zip)
 {
-    if (do_verify) 
+    if (signature_check_enabled) 
 	{
 		/*
 		//RSAPublicKey loadedKeys == keys;
@@ -436,6 +436,10 @@ int err;
 if (!err)
 		{
         LOGE("Verification failed\n");
+
+        ui_print("\nZip verification failed!");
+        ui_print("\nZip isn't signed correctly!");
+
         return INSTALL_CORRUPT;
 		}
     }

@@ -14,7 +14,6 @@ To handle formatting non yaffs2 partitions like the ext3 /data & /cache on Incre
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <unistd.h>
 
 #include "amend/commands.h"
 #include "commands.h"
@@ -47,15 +46,15 @@ To handle formatting non yaffs2 partitions like the ext3 /data & /cache on Incre
 #include "install.h"
 #include "minui/minui.h"
 
+#include <sys/limits.h>
 
+int signature_check_enabled = 1;
 
-
-int do_verify = 1;
-
-void do_verify_switch()
+void toggle_signature_check()
 {
-				do_verify=!do_verify;
-				ui_print("Verification: %s\n",do_verify ? "Enabled" : "Disabled");
+    signature_check_enabled = !signature_check_enabled;
+    ui_print("Signature Check: %s\n", signature_check_enabled ? "Enabled" : "Disabled");
+    if (signature_check_enabled == 0)  ui_print("Flashing unsigned zips may corrupt your system!\n");
 }
 
 void key_logger_test()
@@ -128,7 +127,7 @@ __system(const char *command)
     int pstat;
     char *argp[] = {"sh", "-c", NULL, NULL};
 
-    if (!command)        
+    if (!command)        /* just checking... */
         return(1);
 
     argp[2] = (char *)command;
@@ -137,10 +136,10 @@ __system(const char *command)
     sigaddset(&mask, SIGCHLD);
     sigprocmask(SIG_BLOCK, &mask, &omask);
     switch (pid = vfork()) {
-    case -1:            
+    case -1:            /* error */
         sigprocmask(SIG_SETMASK, &omask, NULL);
         return(-1);
-    case 0:               
+    case 0:                /* child */
         sigprocmask(SIG_SETMASK, &omask, NULL);
         execve(_PATH_BSHELL, argp, environ);
     _exit(127);
@@ -155,12 +154,9 @@ __system(const char *command)
     return (pid == -1 ? -1 : pstat);
 }
 
-
 int format_non_mtd_device(const char* root)
-
 {
-
-   // if this is SDEXT:, don't worry about it.
+    // if this is SDEXT:, don't worry about it.
     if (0 == strcmp(root, "SDEXT:"))
     {
         struct stat st;
@@ -182,9 +178,9 @@ int format_non_mtd_device(const char* root)
 
     static char tmp[PATH_MAX];
     sprintf(tmp, "rm -rf %s/*", path);
-  	__system(tmp);
+    __system(tmp);
     sprintf(tmp, "rm -rf %s/.*", path);
-  	__system(tmp);
+    __system(tmp);
     
     ensure_root_path_unmounted(root);
     return 0;

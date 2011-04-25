@@ -53,7 +53,7 @@ static RootInfo g_roots[] = {
     { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file },
     { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw },
     { "SDCARD:", "/dev/block/mmcblk0p1", "/dev/block/mmcblk0", NULL, "/sdcard", "vfat" },
-    { "SDEXT:", "/dev/block/mmcblk0p2", NULL, NULL, "/sd-ext", "ext4" },
+    { "SDEXT:", "/dev/block/mmcblk0p2", "/dev/block/mmcblk0", NULL, "/sd-ext", "ext4" },
     { "SYSTEM:", g_mtd_device, NULL, "system", "/system", "yaffs2" },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL },
@@ -62,7 +62,7 @@ static RootInfo g_roots[] = {
 
 // TODO: for SDCARD:, try /dev/block/mmcblk0 if mmcblk0p1 fails
 
-static const RootInfo *
+const RootInfo *
 get_root_info_for_path(const char *root_path)
 {
     const char *c;
@@ -320,17 +320,19 @@ format_root_device(const char *root)
     while (*c != '\0' && *c != ':') {
         c++;
     }
+    /*
     if (c[0] != ':' || c[1] != '\0') {
         LOGW("format_root_device: bad root name \"%s\"\n", root);
         return -1;
     }
+    */
 
     const RootInfo *info = get_root_info_for_path(root);
     if (info == NULL || info->device == NULL) {
         LOGW("format_root_device: can't resolve \"%s\"\n", root);
         return -1;
     }
-    if (info->mount_point != NULL) {
+    if (info->mount_point != NULL && info->device == g_mtd_device) {
         /* Don't try to format a mounted device.
          */
         int ret = ensure_root_path_unmounted(root);
@@ -368,8 +370,6 @@ format_root_device(const char *root)
             }
         }
     }
-//TODO: handle other device types (sdcard, etc.)
-   /* LOGW("format_root_device: can't handle non-mtd device \"%s\"\n", root);
-    return -1; */
-	return format_non_mtd_device(root);
+    
+    return format_non_mtd_device(root);
 }
