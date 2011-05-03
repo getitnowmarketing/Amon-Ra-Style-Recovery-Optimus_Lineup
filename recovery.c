@@ -188,7 +188,8 @@ get_args(int *argc, char ***argv) {
             }
             LOGI("Got arguments from boot message\n");
         } else if (boot.recovery[0] != 0 && boot.recovery[0] != 255) {
-            LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
+            //LOGE("Bad boot message\n\"%.20s\"\n", boot.recovery);
+	    LOGE("", boot.recovery);
         }
     }
 
@@ -1515,13 +1516,15 @@ show_menu_other()
 #define ITEM_OTHER_RE2SD  1
 #define ITEM_OTHER_KEY_TEST 2
 //#define ITEM_OTHER_BATTERY_LEVEL 3
-//#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
+#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
+#define ITEM_OTHER_WIPE_SDCARD 4
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
-			     //"- DANGEROUS!! Wipe /system",	
+			     "- DANGEROUS!! Wipe /system",
+			     "- Wipe Sdcard",	
 				NULL };
 
     ui_start_menu(headers, items);
@@ -1584,15 +1587,15 @@ show_menu_other()
 */
 
 		/*Commented out code too dangerous*/
-/*            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
+            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /system");
                     ui_print("\nDangerous & Irreversible!!!\n");
 		    ui_print("\nOnly Used to Fix Corrupted Partition!!!\n");
 		    ui_print("\nPress Menu to confirm,");
                     ui_print("\nany other key to abort.\n\n");
-                    int confirm_wipe_data = ui_wait_key();
-                    if (confirm_wipe_data == KEY_MENU) {
+                    int confirm_wipe_mysys = ui_wait_key();
+                    if (confirm_wipe_mysys == KEY_MENU) {
                         erase_root("SYSTEM:");
                         ui_print("/system wipe complete!\n\n");
                     } else {
@@ -1600,7 +1603,24 @@ show_menu_other()
                     }
                     if (!ui_text_visible()) return;
                     break;
-*/
+
+		/*Commented out code too dangerous*/
+            	case ITEM_OTHER_WIPE_SDCARD:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /Sdcard");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_mysd = ui_wait_key();
+                    if (confirm_wipe_mysd == KEY_MENU) {
+                        erase_root("SDCARD:");
+                        ui_print("/Sdcard wipe complete!\n\n");
+                    } else {
+                        ui_print("/Sdcard wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
 		}
 
             // if we didn't return from this function to reboot, show
