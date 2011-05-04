@@ -1280,9 +1280,10 @@ show_menu_br()
 
                 case ITEM_NANDROID_BCK:
 		    ui_print("\n\n*** WARNING ***");
-		    ui_print("\nsd-ext and .android_secure backups require");
-		    ui_print("\nlots of SDcard space and may take a few");
+		    ui_print("\nNandroid backups require minimum");
+		    ui_print("\n300mb SDcard space and may take a few");
 		    ui_print("\nminutes to back up!\n\n");
+		    ui_print("\nUse Other/recoverylog2sd for errors.\n\n"); 
 		    show_menu_nandroid();
                     break;
 
@@ -1516,14 +1517,14 @@ show_menu_other()
 #define ITEM_OTHER_RE2SD  1
 #define ITEM_OTHER_KEY_TEST 2
 //#define ITEM_OTHER_BATTERY_LEVEL 3
-#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
-#define ITEM_OTHER_WIPE_SDCARD 4
+//#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
+#define ITEM_OTHER_WIPE_SDCARD 3
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
-			     "- DANGEROUS!! Wipe /system",
+			     //"- DANGEROUS!! Wipe /system",
 			     "- Wipe Sdcard",	
 				NULL };
 
@@ -1587,7 +1588,7 @@ show_menu_other()
 */
 
 		/*Commented out code too dangerous*/
-            	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
+   /*         	case ITEM_OTHER_DANGER_WIPE_SYSTEM:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /system");
                     ui_print("\nDangerous & Irreversible!!!\n");
@@ -1603,9 +1604,8 @@ show_menu_other()
                     }
                     if (!ui_text_visible()) return;
                     break;
-
-		/*Commented out code too dangerous*/
-            	case ITEM_OTHER_WIPE_SDCARD:
+   */
+		case ITEM_OTHER_WIPE_SDCARD:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /Sdcard");
                     ui_print("\nThis is Irreversible!!!\n");

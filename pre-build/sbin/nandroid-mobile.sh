@@ -1132,9 +1132,9 @@ fi
 # 3.
 $ECHO "checking free space on sdcard"
 FREEBLOCKS="`df -k /sdcard| grep sdcard | awk '{ print $4 }'`"
-# we need about 500MB for the dump
-if [ $FREEBLOCKS -le 500000 ]; then
-	$ECHO "Error: not enough free space available on sdcard (need 500mb), aborting."
+# we need about 300MB for the dump
+if [ $FREEBLOCKS -le 300000 ]; then
+	$ECHO "Error: not enough free space available on sdcard (need 300mb), aborting."
 	umount /system 2>/dev/null
 	umount /data 2>/dev/null
 	umount /sdcard 2>/dev/null
