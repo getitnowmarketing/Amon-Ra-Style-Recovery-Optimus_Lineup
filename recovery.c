@@ -1012,6 +1012,7 @@ show_menu_wipe()
 #define ITEM_WIPE_DALVIK   5
 #define ITEM_WIPE_BAT      6
 #define ITEM_WIPE_ROT      7
+#define ITEM_WIPE_SDCARD   8
 
     static char* items[] = { "- Wipe ALL data/factory reset",
 			     "- Wipe /data",
@@ -1021,6 +1022,7 @@ show_menu_wipe()
                              "- Wipe Dalvik-cache",
                              "- Wipe battery stats",
                              "- Wipe rotate settings",
+			     "- Wipe SDCard",
                              NULL };
 
     ui_start_menu(headers, items);
@@ -1202,6 +1204,22 @@ show_menu_wipe()
                         ui_print("Rotate settings wipe complete!\n\n");
                     } else {
                         ui_print("Rotate settings wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		case ITEM_WIPE_SDCARD:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /Sdcard");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Menu to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_mysd = ui_wait_key();
+                    if (confirm_wipe_mysd == KEY_MENU) {
+                        erase_root("SDCARD:");
+                        ui_print("/Sdcard wipe complete!\n\n");
+                    } else {
+                        ui_print("/Sdcard wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1518,15 +1536,13 @@ show_menu_other()
 #define ITEM_OTHER_KEY_TEST 2
 //#define ITEM_OTHER_BATTERY_LEVEL 3
 //#define ITEM_OTHER_DANGER_WIPE_SYSTEM 3 
-#define ITEM_OTHER_WIPE_SDCARD 3
 
     static char* items[] = { "- Fix apk uid mismatches",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
 			     //"- DANGEROUS!! Wipe /system",
-			     "- Wipe Sdcard",	
-				NULL };
+			     NULL };
 
     ui_start_menu(headers, items);
     int selected = 0;
@@ -1605,21 +1621,7 @@ show_menu_other()
                     if (!ui_text_visible()) return;
                     break;
    */
-		case ITEM_OTHER_WIPE_SDCARD:
-                    ui_clear_key_queue();
-		    ui_print("\nWipe /Sdcard");
-                    ui_print("\nThis is Irreversible!!!\n");
-		    ui_print("\nPress Menu to confirm,");
-                    ui_print("\nany other key to abort.\n\n");
-                    int confirm_wipe_mysd = ui_wait_key();
-                    if (confirm_wipe_mysd == KEY_MENU) {
-                        erase_root("SDCARD:");
-                        ui_print("/Sdcard wipe complete!\n\n");
-                    } else {
-                        ui_print("/Sdcard wipe aborted!\n\n");
-                    }
-                    if (!ui_text_visible()) return;
-                    break;
+		
 
 		}
 
