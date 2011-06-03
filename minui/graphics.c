@@ -29,7 +29,7 @@
 
 #include <pixelflinger/pixelflinger.h>
 
-#include "font_10x18.h"
+#include "font_7x16.h"
 #include "minui.h"
 
 typedef struct {
@@ -50,11 +50,11 @@ static int gr_fb_fd = -1;
 static int gr_vt_fd = -1;
 
 static struct fb_var_screeninfo vi;
+static struct fb_fix_screeninfo fi;
 
 static int get_framebuffer(GGLSurface *fb)
 {
     int fd;
-    struct fb_fix_screeninfo fi;
     void *bits;
 
     fd = open("/dev/graphics/fb0", O_RDWR);
@@ -75,6 +75,45 @@ static int get_framebuffer(GGLSurface *fb)
         return -1;
     }
 
+    fprintf(stderr, "fb info:\n");
+    fprintf(stderr, " fi: %s", fi.id);
+    fprintf(stderr, " %lu", fi.smem_start);
+    fprintf(stderr, " %d", fi.smem_len);
+    fprintf(stderr, " %d", fi.type);
+    fprintf(stderr, " %d", fi.type_aux);
+    fprintf(stderr, " %d", fi.visual);
+    fprintf(stderr, " %d", fi.xpanstep);
+    fprintf(stderr, " %d", fi.ypanstep);
+    fprintf(stderr, " %d", fi.ywrapstep);
+    fprintf(stderr, " %d", fi.line_length);
+    fprintf(stderr, " %lu", fi.mmio_start);
+    fprintf(stderr, " %d", fi.mmio_len);
+    fprintf(stderr, " %d\n", fi.accel);
+
+    fprintf(stderr, " vi: %d", vi.xres);
+    fprintf(stderr, " %d", vi.yres);
+    fprintf(stderr, " %d", vi.xres_virtual);
+    fprintf(stderr, " %d", vi.yres_virtual);
+    fprintf(stderr, " %d", vi.xoffset);
+    fprintf(stderr, " %d", vi.yoffset);
+    fprintf(stderr, " %d", vi.bits_per_pixel);
+    fprintf(stderr, " %d", vi.grayscale);
+    fprintf(stderr, " %d", vi.nonstd);
+    fprintf(stderr, " %d", vi.activate);
+    fprintf(stderr, " %d", vi.height);
+    fprintf(stderr, " %d", vi.width);
+    fprintf(stderr, " %d", vi.accel_flags);
+    fprintf(stderr, " %d", vi.pixclock);
+    fprintf(stderr, " %d", vi.left_margin);
+    fprintf(stderr, " %d", vi.right_margin);
+    fprintf(stderr, " %d", vi.upper_margin);
+    fprintf(stderr, " %d", vi.lower_margin);
+    fprintf(stderr, " %d", vi.hsync_len);
+    fprintf(stderr, " %d", vi.vsync_len);
+    fprintf(stderr, " %d", vi.sync);
+    fprintf(stderr, " %d", vi.vmode);
+    fprintf(stderr, " %d\n", vi.rotate);
+
     bits = mmap(0, fi.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (bits == MAP_FAILED) {
         perror("failed to mmap framebuffer");
@@ -85,7 +124,7 @@ static int get_framebuffer(GGLSurface *fb)
     fb->version = sizeof(*fb);
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = vi.xres;
+    fb->stride = fi.line_length / 2;
     fb->data = bits;
     fb->format = GGL_PIXEL_FORMAT_RGB_565;
 
@@ -94,8 +133,8 @@ static int get_framebuffer(GGLSurface *fb)
     fb->version = sizeof(*fb);
     fb->width = vi.xres;
     fb->height = vi.yres;
-    fb->stride = vi.xres;
-    fb->data = (void*) (((unsigned) bits) + vi.yres * vi.xres * 2);
+    fb->stride = fi.line_length / 2;
+    fb->data = (void*) (((unsigned) bits) + fi.smem_len / 2);
     fb->format = GGL_PIXEL_FORMAT_RGB_565;
 
     return fd;
@@ -105,8 +144,8 @@ static void get_memory_surface(GGLSurface* ms) {
   ms->version = sizeof(*ms);
   ms->width = vi.xres;
   ms->height = vi.yres;
-  ms->stride = vi.xres;
-  ms->data = malloc(vi.xres * vi.yres * 2);
+  ms->stride = fi.line_length / 2;
+  ms->data = malloc(fi.smem_len / 2);
   ms->format = GGL_PIXEL_FORMAT_RGB_565;
 }
 
@@ -131,7 +170,7 @@ void gr_flip(void)
     /* copy data from the in-memory surface to the buffer we're about
      * to make active. */
     memcpy(gr_framebuffer[gr_active_fb].data, gr_mem_surface.data,
-           vi.xres * vi.yres * 2);
+           fi.smem_len / 2);
 
     /* inform the display driver */
     set_active_framebuffer(gr_active_fb);
