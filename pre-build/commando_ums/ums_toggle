@@ -1,0 +1,28 @@
+#!/sbin/sh
+
+um
+if [ $? != "0" ]; then
+	echo "Unable to unmount!"
+	exit 1
+fi
+
+case $1 in
+    on)
+	echo 02ee > /sys/module/android/parameters/product_id
+	sleep 1
+	echo /dev/block/mmcblk0p1 > /sys/devices/platform/usb_mass_storage/lun0/file
+	echo "USB Mass Storage enabled"
+        ;;
+    off)
+	sync
+	echo "" > /sys/devices/platform/usb_mass_storage/lun0/file
+	echo "USB Mass Storage disabled"
+        echo 02ef > /sys/module/android/parameters/product_id
+	;;
+    --)
+        ;;
+esac
+
+exit 0
+
+
