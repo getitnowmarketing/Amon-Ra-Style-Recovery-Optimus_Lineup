@@ -1,6 +1,6 @@
 #!/sbin/sh
 
-# nandroid v2.2.2 - an Android backup tool for the G1 by infernix and brainaid
+# nandroid v2.2.3- an Android backup tool for the G1 by infernix and brainaid
 # restore capability added by cyanogen
 
 # pensive modified to allow to add prefixes to backups, and to restore specific backups
@@ -18,6 +18,9 @@
 # pensive added list updates (more precisely *.zip) anywhere on the sdcard
 # Amon_RA : ext restore -> added check if ext backup is existing
 # Amon_RA : ext restore -> added check if ext parition is existing
+# Amon_RA -> added wimax restore/backup
+# Getitnowmarketing added android_secure restore
+# Getitnowmarketing added Clockwork 4.0 & 5.0 Nandroid restore compatibility
 
 # Requirements:
 
@@ -86,6 +89,9 @@ NOCACHE=0
 NOSPLASH1=0
 NOSPLASH2=0
 EXT=0
+BIGDATA=0
+ANDROID_SECURE=0
+WIMAX=0
 
 COMPRESS=0
 GETUPDATE=0
@@ -101,6 +107,9 @@ ITSANUPDATE=0
 ITSANIMAGE=0
 WEBGETSOURCE=""
 WEBGETTARGET="/sdcard"
+YAFFSEXTASECURE=0
+CWMRESTORE=0
+CWMCOMPAT=0
 
 DEFAULTUPDATEPATH="/sdcard/download"
 
@@ -148,19 +157,6 @@ echo2log()
     fi
 }
 
-batteryAtLeast()
-{
-                REQUIREDLEVEL=$1
-		ENERGY=`cat /sys/class/power_supply/battery/capacity`
-		if [ "`cat /sys/class/power_supply/battery/status`" == "Charging" ]; then
-			ENERGY=100
-		fi
-		if [ ! $ENERGY -ge $REQUIREDLEVEL ]; then
-			$ECHO "Error: not enough battery power, need at least $REQUIREDLEVEL%."
-			$ECHO "Connect charger or USB power and try again"
-			exit 1
-		fi
-}
 
 if [ "`echo $0 | grep /sbin/nandroid-mobile.sh`" == "" ]; then
     cp $0 /sbin
@@ -186,7 +182,7 @@ esac
 ECHO=echo
 OUTPUT=""
 
-for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -l nodata -l nosystem -l nocache -l nomisc -l nosplash1 -l nosplash2 -l subname: -l backup -l restore -l compress -l getupdate -l delete -l path -l webget: -l webgettarget: -l nameserver: -l nameserver2: -l bzip2: -l defaultinput -l autoreboot -l autoapplyupdate -l ext -l android_secure -l save: -l switchto: -l listbackup -l listupdate -l silent -l quiet -l help -- "cbruds:p:eaql" "$@"); do
+for option in $(getopt --name="nandroid-mobile v2.2.3" -l norecovery -l noboot -l nodata -l nosystem -l nocache -l nomisc -l wimax -l nosplash1 -l nosplash2 -l subname: -l backup -l restore -l compress -l getupdate -l delete -l path -l webget: -l webgettarget: -l nameserver: -l nameserver2: -l bzip2: -l defaultinput -l autoreboot -l autoapplyupdate -l ext -l android_secure -l cwmcompat -l bigdata -l save: -l switchto: -l listbackup -l listupdate -l silent -l quiet -l help -- "cbruds:p:eaql" "$@"); do
     case $option in
         --silent)
             ECHO=echo2log
@@ -246,7 +242,9 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             $ECHO "-a | --android_secure      Preserve the contents of /sdcard/.android_secure along with"
             $ECHO "                           the other partitions being backed up, to easily switch roms."
             $ECHO ""
-            $ECHO "-r | --restore             Will restore the last made backup which matches --subname"
+            $ECHO "--bigdata	              Preserve the contents of ext3 data.img mounted as /data on loopback"
+	    $ECHO ""
+	    $ECHO "-r | --restore             Will restore the last made backup which matches --subname"
             $ECHO "                           ARGUMENT for boot, system, recovery and data"
             $ECHO "                           unless suppressed by other options"
             $ECHO "                           if no --subname is supplied and the user fails to"
@@ -300,6 +298,8 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             $ECHO ""
             $ECHO "--nosplash2                Will suppress restore/backup of the splash2 partition"
             $ECHO ""
+            $ECHO "--wimax                  Will restore/backup of the wimax partition"
+            $ECHO ""
             $ECHO "--defaultinput             Makes nandroid-mobile non-interactive, assumes default"
             $ECHO "                           inputs from the user."
             $ECHO ""
@@ -328,7 +328,9 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             $ECHO ""
             $ECHO "--listupdate               Will search the entire SDCARD for updates and will dump"
             $ECHO "                           the list to stdout for use by the UI. Should be run with --silent"
-            exit 0
+            $ECHO "--cwmcompat                Compatibility Mode for CWM Backup Folder"
+            $ECHO ""                           
+	    exit 0
             ;;
         --norecovery)
             NORECOVERY=1
@@ -370,6 +372,11 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             #$ECHO "No splash2"
             shift
             ;;
+        --wimax)
+            WIMAX=1
+            #$ECHO "wimax"
+            shift
+            ;;
         --backup)
             BACKUP=1
             #$ECHO "backup"
@@ -396,6 +403,10 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             ANDROID_SECURE=1
             shift
             ;;
+	--bigdata)
+	    BIGDATA=1
+	    shift
+	    ;;
         --restore)
             RESTORE=1
             #$ECHO "restore"
@@ -553,7 +564,11 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             shift
             LISTUPDATE=1
             ;;
-        --)
+        --cwmcompat)
+            CWMCOMPAT=1
+	    shift
+            ;;
+	--)
             shift
             break
             ;;
@@ -561,8 +576,12 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
 done
 
 $ECHO ""
-$ECHO "nandroid-mobile v2.2.1"
+$ECHO "nandroid-mobile v2.2.3"
 $ECHO ""
+
+if [ "$CWMCOMPAT" == "1" ]; then
+BACKUPPATH="/sdcard/clockworkmod/backup"
+fi
 
 let OPS=$BACKUP
 let OPS=$OPS+$RESTORE
@@ -751,17 +770,6 @@ fi
 
 
 if [ "$RESTORE" == 1 ]; then
-                batteryAtLeast 30
-#		ENERGY=`cat /sys/class/power_supply/battery/capacity`
-#		if [ "`cat /sys/class/power_supply/battery/status`" == "Charging" ]; then
-#			ENERGY=100
-#		fi
-#		if [ ! $ENERGY -ge 30 ]; then
-#			$ECHO "Error: not enough battery power"
-#			$ECHO "Connect charger or USB power and try again"
-#			exit 1
-#		fi
-
 
                 umount /sdcard 2>/dev/null
 		mount /sdcard 2>/dev/null
@@ -898,17 +906,68 @@ if [ "$RESTORE" == 1 ]; then
                 if [ `ls system* 2>/dev/null | wc -l` == 0 ]; then
                     NOSYSTEM=1
                 fi
+
+		# Clockwork Restore Detection GNM
+		if [ `ls system.*.tar 2>/dev/null | wc -l` != 0 ]; then
+                    echo "Clockwork 5.0 system.*.tar detected"
+		    #CWMRESTORE=1
+                fi
+		if [ `ls data.*.tar 2>/dev/null | wc -l` != 0 ]; then
+                    echo "Clockwork 5.0 data.*.tar detected"
+		    #CWMRESTORE=1
+                fi
+		if [ `ls cache.*.tar 2>/dev/null | wc -l` != 0 ]; then
+                    echo "Clockwork 5.0 cache.*.tar detected"
+		    #CWMRESTORE=1
+                fi
+
 		# Amon_RA : If there's no ext backup set ext to 0 so ext restore doesn't start                
+		if [ `ls sd-ext.img 2>/dev/null | wc -l` != 0 ]; then
+		    echo "Clockwork 4.0 sd-ext.img detected"
+		    mv sd-ext.img ext.img
+		fi		
+
+		if [ `ls sd-ext.*.tar 2>/dev/null | wc -l` != 0 ]; then
+		    echo "Clockwork 5.0 sd-ext.*.tar detected"
+		fi
+
 		if [ `ls ext* 2>/dev/null | wc -l` == 0 ]; then
-                    EXT=0
-                fi
+                    if [ `ls sd-ext.*.tar 2>/dev/null | wc -l` == 0 ]; then
+			EXT=0
+		else
+		        EXT=1
+                    fi
+		fi
 		# GNM : If there's no android_secure backup set androidsecure to 0 so android_secure restore doesn't start                
+		if [ `ls .android_secure.img 2>/dev/null | wc -l` != 0 ]; then
+		    echo "Clockwork 4.0 .android_secure.img detected"
+		    mv .android_secure.img android_secure.img
+		fi
+		
+		if [ `ls .android_secure.*.tar 2>/dev/null | wc -l` != 0 ]; then
+		    echo "Clockwork 5.0 .android_secure.*.tar detected"
+		fi
+
 		if [ `ls android_secure* 2>/dev/null | wc -l` == 0 ]; then
+               	    if [ `ls .android_secure.*.tar 2>/dev/null | wc -l` == 0 ]; then
                     ANDROID_SECURE=0
+		else
+		    	ANDROID_SECURE=1
+                fi
+		fi
+				
+		# GNM : If there's no bigdata.tar backup set bigdata to 0 so restore doesn't start                
+		if [ `ls bigdata* 2>/dev/null | wc -l` == 0 ]; then
+                    BIGDATA=0
+                fi
+				
+				# Amon_RA : If there's no wimax backup set wimax to 0 so wimax restore doesn't start                
+                if [ `ls wimax* 2>/dev/null | wc -l` == 0 ]; then
+                    WIMAX=0
+				
                 fi
 
-
-		for image in boot recovery; do
+		for image in boot recovery wimax; do
                     if [ "$NOBOOT" == "1" -a "$image" == "boot" ]; then
                         $ECHO ""
                         $ECHO "Not flashing boot image!"
@@ -921,11 +980,17 @@ if [ "$RESTORE" == 1 ]; then
                         $ECHO ""
                         continue
                     fi
+                    if [ "$WIMAX" == "0" -a "$image" == "wimax" ]; then
+                        $ECHO ""
+                        $ECHO "Not flashing wimax image!"
+                        $ECHO ""
+                        continue
+                    fi
                     $ECHO "Flashing $image..."
 		    $flash_image $image $image.img $OUTPUT
                 done
 
-		for image in data system; do
+		for image in data system cache; do
                         if [ "$NODATA" == "1" -a "$image" == "data" ]; then
                             $ECHO ""
                             $ECHO "Not restoring data image!"
@@ -941,9 +1006,21 @@ if [ "$RESTORE" == 1 ]; then
 			$ECHO "Erasing /$image..."
 			cd /$image
 			rm -rf * 2>/dev/null
-			$ECHO "Unpacking $image image..."
-			$unyaffs $RESTOREPATH/$image.img $OUTPUT
-			cd /
+			
+			if [ -e $RESTOREPATH/$image.*.tar ]; then
+				cd /
+				$ECHO "Unpacking Clockwork $image image..."
+				tar -xf $RESTOREPATH/$image.*.tar
+			elif [ -e $RESTOREPATH/$image.yaffs2.img ]; then
+					$ECHO "Unpacking Clockwork 5 yaffs2 $image image..."
+		        	$unyaffs $RESTOREPATH/$image.yaffs2.img $OUTPUT
+					cd /
+			else	
+				$ECHO "Unpacking $image image..."
+		        	$unyaffs $RESTOREPATH/$image.img $OUTPUT
+				cd /
+			fi
+			 
 			sync
 			umount /$image
 		done
@@ -969,8 +1046,13 @@ if [ "$RESTORE" == 1 ]; then
 	                    else
 	                        CWD=`pwd`
 	                        cd /sd-ext
+				echo "Restoring sd-ext"
 	                        # Depending on whether the ext backup is compressed we do either or.
-	                        if [ -e $RESTOREPATH/ext.tar ]; then 
+	                       if  [ -e $RESTOREPATH/ext.img ]; then
+				    rm -rf ./* 2>/dev/null
+				    $unyaffs $RESTOREPATH/ext.img 
+			       else
+				if [ -e $RESTOREPATH/ext.tar ]; then 
 	                            rm -rf ./* 2>/dev/null
 	                            tar -x$TARFLAGS -f $RESTOREPATH/ext.tar
 	                        else
@@ -982,11 +1064,18 @@ if [ "$RESTORE" == 1 ]; then
 	                                    rm -rf ./* 2>/dev/null
 	                                    tar -x$TARFLAGS -jf $RESTOREPATH/ext.tar.bz2
 	                                else
-	                                    $ECHO "Warning: --ext specified but cannot find the ext backup."
-	                                    $ECHO "Warning: your phone may be in an inconsistent state on reboot."
-	                                fi
+					    if [ -e $RESTOREPATH/sd-ext.*.tar ]; then
+					        echo "Restoring Clockwork sd-ext.*.tar"
+						rm -rf ./* 2>/dev/null
+						tar -xf $RESTOREPATH/sd-ext.*.tar
+					    else	
+	                                    	$ECHO "Warning: --ext specified but cannot find the ext backup."
+	                                    	$ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                                    fi
+					fi
 	                            fi
 	                        fi
+			     fi
 	                        cd $CWD
 	                        sync
 	                        umount /sd-ext
@@ -999,12 +1088,92 @@ if [ "$RESTORE" == 1 ]; then
                 	fi
 		fi
 
-                if [ "$ANDROID_SECURE" == 1 ]; then
+                
+		if [ "$BIGDATA" == 1 ]; then
+			
+			echo "restoring bigdata"
+			# Getitnowmarketing : Check if there's an mmcblk0p3 partition before starting to restore    		
+			if [ -e /dev/block/mmcblk0p3 ]; then
+	                    $ECHO "Restoring the ext3 data.img contents."
+	                    CWD=`pwd`
+	                    cd /
 
+	                    if [ `mount | grep /bigdata | wc -l` == 0 ]; then
+	                        mount /bigdata 2>/dev/null
+	                    fi
+
+			    CHECK=`mount | grep /bigdata`
+    			    if [ "$CHECK" == "" ]; then
+       			    $ECHO "Warning: --bigdata specified but unable to mount the mmcblk0p3 partition."
+          			exit 1
+    			    fi
+
+			    CHECK=`mount | grep /data-ext`
+    			    if [ "$CHECK" == "" ]; then
+        		    busybox mount -o rw /bigdata/data.img  /data-ext
+    			    fi
+	                    			    
+			    cd $CWD
+	                    CHECK=`mount | grep /data-ext`
+
+	                    if [ "$CHECK" == "" ]; then
+	                        $ECHO "Warning: unable to mount the ext data.img"
+	                        $ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                        exit 1
+	                    else
+	                        CWD=`pwd`
+	                        cd /data-ext
+	                        # Depending on whether the ext backup is compressed we do either or.
+	                        if [ -e $RESTOREPATH/bigdata.tar ]; then 
+	                            rm -rf ./* 2>/dev/null
+				    rm -rf .* 2>/dev/null
+	                            tar -x$TARFLAGS -f $RESTOREPATH/bigdata.tar
+	                        else
+	                            if [ -e $RESTOREPATH/bigdata.tgz ]; then
+	                                rm -rf ./* 2>/dev/null
+                                        rm -rf .* 2>/dev/null
+	                                tar -x$TARFLAGS -zf $RESTOREPATH/bigdata.tgz
+	                            else
+	                                if [ -e $RESTOREPATH/bigdata.tar.bz2 ]; then
+	                                    rm -rf ./* 2>/dev/null
+					    rm -rf .* 2>/dev/null
+	                                    tar -x$TARFLAGS -jf $RESTOREPATH/bigdata.tar.bz2
+	                                else
+	                                    $ECHO "Warning: --bigdata specified but cannot find the data.img backup."
+	                                    $ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                                fi
+	                            fi
+	                        fi
+	                        cd $CWD
+	                        sync
+	                        DATALOOPMNT=`mount | grep /data-ext | awk '{print $1}'`
+	    			echo "unmounting data.img on $DATALOOPMNT"
+	    			umount /data-ext 2>/dev/null
+	    			busybox losetup -d "$DATALOOPMNT"
+				umount /bigdata 2>/dev/null
+	
+	                    fi
+			else
+	                        # Amon_RA : Just display a warning
+				$ECHO "Warning: --ext specified but ext partition present on sdcard"
+	                        $ECHO "Warning: your phone may be in an inconsistent state on reboot."     
+                	fi
+		fi
+		
+
+
+		if [ "$ANDROID_SECURE" == 1 ]; then
+				echo "restoring android_secure"
 	                        CWD=`pwd`
 	                        cd /sdcard
 	                        # Depending on whether the android_secure backup is compressed we do either or.
-	                        if [ -e $RESTOREPATH/android_secure.tar ]; then 
+	                        if  [ -e $RESTOREPATH/android_secure.img ]; then
+				     mkdir -p /sdcard/.android_secure
+				     cd .android_secure
+				     rm -rf ./* 2>/dev/null
+				     $unyaffs $RESTOREPATH/android_secure.img 
+			       else
+				if [ -e $RESTOREPATH/android_secure.tar ]; then 
 	                            rm -rf .android_secure 2>/dev/null
 	                            tar -x$TARFLAGS -f $RESTOREPATH/android_secure.tar
 	                        else
@@ -1016,11 +1185,18 @@ if [ "$RESTORE" == 1 ]; then
 	                                    rm -rf .android_secure 2>/dev/null
 	                                    tar -x$TARFLAGS -jf $RESTOREPATH/android_secure.tar.bz2
 	                                else
-	                                    $ECHO "Warning: --android_secure specified but cannot find the android_secure backup."
-	                                    $ECHO "Warning: your phone may be in an inconsistent state on reboot."
-	                                fi
+	                                    if [ -e $RESTOREPATH/.android_secure.*.tar ]; then
+	                                        echo "Restoring Clockwork .android_secure.*.tar"
+						rm -rf .android_secure 2>/dev/null
+	                                        tar -xf $RESTOREPATH/.android_secure.*.tar
+					    else
+	                                        $ECHO "Warning: --android_secure specified but cannot find the android_secure backup."
+	                                        $ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                                    fi
+					fi
 	                            fi
-	                        fi
+	                          fi
+				fi
 	                        cd $CWD
 	                        sync
 		fi
@@ -1033,26 +1209,13 @@ fi
 # 2.
 if [ "$BACKUP" == 1 ]; then
 
-    if [ "$COMPRESS" == 1 ]; then
-        ENERGY=`cat /sys/class/power_supply/battery/capacity`
-        if [ "`cat /sys/class/power_supply/battery/status`" == "Charging" ]; then
-            ENERGY=100
-        fi
-        if [ ! $ENERGY -ge 30 ]; then
-            $ECHO "Warning: Not enough battery power to perform compression."
-            COMPRESS=0
-            $ECHO "Turning off compression option, you can compress the backup later"
-            $ECHO "with the compression options."
-        fi
-    fi
-
 $ECHO "mounting system and data read-only, sdcard read-write"
 umount /system 2>/dev/null
 umount /data 2>/dev/null
 umount /sdcard 2>/dev/null
 mount -o ro /system || FAIL=1
 mount -o ro /data || FAIL=2
-mount /sdcard || mount /dev/block/mmcblk0 /sdcard || FAIL=3
+mount /sdcard || mount /dev/block/mmcblk0p1 /sdcard || FAIL=3
 case $FAIL in
 	1) $ECHO "Error mounting system read-only"; umount /system /data /sdcard; exit 1;;
 	2) $ECHO "Error mounting data read-only"; umount /system /data /sdcard; exit 1;;
@@ -1079,6 +1242,9 @@ fi
 if [ "$ANDROID_SECURE" == 1 ]; then
     BACKUPLEGEND=$BACKUPLEGEND"A"
 fi
+if [ "$BIGDATA" == 1 ]; then
+    BACKUPLEGEND=$BACKUPLEGEND"X"
+fi
 if [ "$NOMISC" == 0 ]; then
     BACKUPLEGEND=$BACKUPLEGEND"M"
 fi
@@ -1099,6 +1265,10 @@ if [ "$NOSPLASH1" == 0 ]; then
 fi
 if [ "$NOSPLASH2" == 0 ]; then
     BACKUPLEGEND=$BACKUPLEGEND"2"
+fi
+
+if [ "$WIMAX" == 1 ]; then
+    BACKUPLEGEND=$BACKUPLEGEND"W"
 fi
 
 if [ ! "$BACKUPLEGEND" == "" ]; then
@@ -1163,7 +1333,7 @@ fi
 
 
 # 5.
-for image in boot recovery misc; do
+for image in boot recovery misc wimax; do
 
     case $image in
         boot)
@@ -1184,6 +1354,13 @@ for image in boot recovery misc; do
                 continue
             fi
             ;;
+        wimax)
+            if [ "$WIMAX" == 0 ]; then
+                $ECHO "Dump of the wimax partition suppressed."
+                continue
+            fi
+            ;;
+
     esac
 
 	# 5a
@@ -1259,13 +1436,16 @@ if [ "$EXT" == 1 ]; then
     CHECK=`mount | grep /sd-ext`
     if [ "$CHECK" == "" ]; then
           $ECHO "Warning: --ext specified but unable to mount the ext partition."
-          exit 1
+          $ECHO "Skipping /sd-ext backup."
     else
         
         CWD=`pwd`
         cd /sd-ext
         # Depending on the whether we want it compressed we do either or.
-        if [ "$COMPRESS" == 0 ]; then 
+        if [ "$YAFFSEXTASECURE" == 0 ]; then
+	$mkyaffs2image /sd-ext $DESTDIR/ext.img
+	else
+	if [ "$COMPRESS" == 0 ]; then 
             tar -cvf $DESTDIR/ext.tar ./*
         else
             if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
@@ -1273,6 +1453,7 @@ if [ "$EXT" == 1 ]; then
             else
                 tar -cvzf $DESTDIR/ext.tgz ./*
             fi
+          fi
         fi
         cd $CWD
         umount /sd-ext
@@ -1286,7 +1467,10 @@ if [ "$ANDROID_SECURE" == 1 ]; then
         CWD=`pwd`
         cd /sdcard
         # Depending on the whether we want it compressed we do either or.
-        if [ "$COMPRESS" == 0 ]; then 
+        if [ "$YAFFSEXTASECURE" == 0 ]; then
+	$mkyaffs2image /sdcard/.android_secure $DESTDIR/android_secure.img
+	else
+	if [ "$COMPRESS" == 0 ]; then 
             tar -cvf $DESTDIR/android_secure.tar ./.android_secure*
         else
             if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
@@ -1294,9 +1478,59 @@ if [ "$ANDROID_SECURE" == 1 ]; then
             else
                 tar -cvzf $DESTDIR/android_secure.tgz ./.android_secure*
             fi
-        fi
+		fi
+    fi
         cd $CWD
 fi
+
+if [ "$BIGDATA" == 1 ]; then
+    $ECHO "Storing the data ext.img contents in the backup folder."
+
+    CHECK=`mount | grep /bigdata`
+    if [ "$CHECK" == "" ]; then
+        mount /bigdata 2>/dev/null
+    fi
+    
+    CHECK=`mount | grep /bigdata`
+    if [ "$CHECK" == "" ]; then
+       $ECHO "Warning: --bigdata specified but unable to mount the mmcblk0p3 partition."
+          exit 1
+    fi
+
+    CHECK=`mount | grep /data-ext`
+    if [ "$CHECK" == "" ]; then
+        busybox mount -o rw /bigdata/data.img  /data-ext
+    fi
+
+    CHECK=`mount | grep /data-ext`
+    if [ "$CHECK" == "" ]; then
+          $ECHO "Warning: unable to mount the ext3 data.img"
+          exit 1
+    else
+        
+        CWD=`pwd`
+        cd /data-ext
+        # Depending on the whether we want it compressed we do either or.
+        if [ "$COMPRESS" == 0 ]; then 
+            tar -cvf $DESTDIR/bigdata.tar ./*
+        else
+            if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
+                tar -cvjf $DESTDIR/bigdata.tar.bz2 ./*
+            else
+                tar -cvzf $DESTDIR/bigdata.tgz ./*
+            fi
+        fi
+        cd $CWD
+        DATALOOPMNT=`mount | grep /data-ext | awk '{print $1}'`
+	    sync
+	    echo "unmounting data.img on $DATALOOPMNT"
+	    umount /data-ext 2>/dev/null
+	    busybox losetup -d "$DATALOOPMNT"
+	    umount /bigdata 2>/dev/null
+    fi
+fi
+
+
 
 # 7.
 $ECHO -n "generating md5sum file..."
@@ -1352,7 +1586,7 @@ if [ "$WEBGET" == 1 ]; then
     mount -o ro /system || FAIL=1
     # Need to write to this system to setup nameservers for the wifi
     mount -o rw /data || FAIL=2
-    mount /sdcard || mount /dev/block/mmcblk0 /sdcard || FAIL=3
+    mount /sdcard || mount /dev/block/mmcblk0p1 /sdcard || FAIL=3
 
     case $FAIL in
 	1) $ECHO "Error mounting system read-only"; umount /system /data /sdcard; exit 1;;
@@ -1600,7 +1834,7 @@ if [ "$COMPRESS" == 1 -o "$DELETE" == 1 ]; then
     FAIL=0
     # Since we are in recovery, these file-system have to be mounted
     $ECHO "Mounting /sdcard to look for backups."
-    mount /sdcard || mount /dev/block/mmcblk0 /sdcard || FAIL=1
+    mount /sdcard || mount /dev/block/mmcblk0p1 /sdcard || FAIL=1
 
     if [ "$FAIL" == 1 ]; then
 	$ECHO "Error mounting /sdcard read-write, cleaning up..."; umount /system /data /sdcard; exit 1
@@ -1735,7 +1969,7 @@ if [ "$GETUPDATE" == 1 ]; then
     FAIL=0
     # Since we are in recovery, these file-system have to be mounted
     $ECHO "Mounting /sdcard to look for updates to flash."
-    mount /sdcard || mount /dev/block/mmcblk0 /sdcard || FAIL=1
+    mount /sdcard || mount /dev/block/mmcblk0p1 /sdcard || FAIL=1
 
     if [ "$FAIL" == 1 ]; then
 	$ECHO "Error mounting /sdcard read-write, cleaning up..."; umount /system /data /sdcard; exit 1

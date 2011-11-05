@@ -48,7 +48,10 @@ To handle formatting non yaffs2 partitions like the ext3 /data & /cache on Incre
 
 #include <sys/limits.h>
 
-int signature_check_enabled = 1;
+#include "recovery_ui_keys.h"
+
+//disable this, its optional
+int signature_check_enabled = 0;
 
 void toggle_signature_check()
 {
@@ -69,7 +72,7 @@ void key_logger_test()
 		int key = ui_wait_key();
                 //int visible = ui_text_visible();
 
-		if (key == KEY_BACK) {
+		if (key == GO_BACK) {
                    break;
                
 		} else  {   
@@ -82,10 +85,10 @@ void run_script(char *str1,char *str2,char *str3,char *str4,char *str5,char *str
 {
 	ui_print(str1);
         ui_clear_key_queue();
-	ui_print("\nPress Menu to confirm,");
+	ui_print("\nPress %s to confirm,", CONFIRM);
        	ui_print("\nany other key to abort.\n");
 	int confirm = ui_wait_key();
-		if (confirm == KEY_MENU) {
+		if (confirm == SELECT) {
                 	ui_print(str2);
 		        pid_t pid = fork();
                 	if (pid == 0) {
@@ -207,11 +210,11 @@ void usb_toggle_sdcard()
                 	} else {
                                 ui_clear_key_queue();
                 		ui_print("\nUSB-MS enabled!");
-				ui_print("\nPress Menu to disable,");
+				ui_print("\nPress %s to disable,", CONFIRM);
 				ui_print("\nand return to menu\n");
 		       		for (;;) {
         	                        	int key = ui_wait_key();
-						if (key == KEY_MENU) {
+						if (key == SELECT) {
 							ui_print("\nDisabling USB-MS : ");
 						        pid_t pid = fork();
 				                	if (pid == 0) {
@@ -235,59 +238,8 @@ void usb_toggle_sdcard()
 					        }
 				} 
                 	}
-		}	
-/*              
-void usb_toggle_emmc()
-{
-		ui_print("\nEnabling USB-MS : ");
-		        pid_t pid1 = fork();
-                	if (pid1 == 0) {
-                		char *args[] = { "/sbin/sh", "-c", "/sbin/ums_emmc_toggle on", "1>&2", NULL };
-                	        execv("/sbin/sh", args);
-                	        fprintf(stderr, "\nUnable to enable USB-MS!\n(%s)\n", strerror(errno));
-                	        _exit(-1);
-                	}
-			int status1;
-			while (waitpid(pid1, &status1, WNOHANG) == 0) {
-				ui_print(".");
-               		        sleep(1);
-			}
-                	ui_print("\n");
-			if (!WIFEXITED(status1) || (WEXITSTATUS(status1) != 0)) {
-                		ui_print("\nError : Run 'ums_emmc_toggle' via adb!\n\n");
-                	} else {
-                                ui_clear_key_queue();
-                		ui_print("\nUSB-MS enabled!");
-				ui_print("\nPress Trackball to disable,");
-				ui_print("\nand return to menu\n");
-		       		for (;;) {
-        	                        	int key = ui_wait_key();
-						if (key == BTN_MOUSE) {
-							ui_print("\nDisabling USB-MS : ");
-						        pid_t pid1 = fork();
-				                	if (pid1 == 0) {
-				                		char *args[] = { "/sbin/sh", "-c", "/sbin/ums_emmc_toggle off", "1>&2", NULL };
-                					        execv("/sbin/sh", args);
-				                	        fprintf(stderr, "\nUnable to disable USB-MS!\n(%s)\n", strerror(errno));
-				                	        _exit(-1);
-				                	}
-							int status1;
-							while (waitpid(pid1, &status1, WNOHANG) == 0) {
-								ui_print(".");
-				               		        sleep(1);
-							}
-				                	ui_print("\n");
-							if (!WIFEXITED(status1) || (WEXITSTATUS(status1) != 0)) {
-				                		ui_print("\nError : Run 'ums_emmc_toggle' via adb!\n\n");
-				                	} else {
-				                		ui_print("\nUSB-MS disabled!\n\n");
-							}	
-							break;
-					        }
-				} 
-             }
-   }	
-*/
+		}	              
+
 void wipe_battery_stats()
 {
     ensure_root_path_mounted("DATA:");
@@ -303,10 +255,232 @@ void wipe_rotate_settings()
     ensure_root_path_unmounted("DATA:");
 }     
 
-/*
+void make_clockwork_path()
+{
+    ensure_root_path_mounted("SDCARD:");
+    __system("mkdir -p /sdcard/clockworkmod/backup");
+//    ensure_root_path_unmounted("SDCARD:");
+} 
+
 void check_my_battery_level()
 {
 	
-	__system("cat /sys/class/power_supply/battery/capacity");
+    char cap_s[3];
+    
+    FILE * cap = fopen("/sys/class/power_supply/battery/capacity","r");
+    fgets(cap_s, 3, cap);
+    fclose(cap);
+
+    ui_print("\nBattery Level: %s%%\n\n", cap_s);
 }
-*/
+int dump_device(const char *device)
+{
+static char dump[PATH_MAX];
+sprintf(dump, "dump_image %s /tmp/mkboot/boot.img", device);
+__system(dump);
+LOGW("dump cmd is %s\n", dump);
+return 0;
+}
+void unpack_boot()
+{
+__system("unpackbootimg /tmp/mkboot/boot.img /tmp/mkboot");
+__system("mkbootimg.sh");
+__system("flash_image boot /tmp/mkboot/newboot.img");
+__system("sync");
+}
+
+void setup_mkboot()
+{
+ensure_root_path_mounted("SDCARD:");
+    __system("mkdir -p /sdcard/mkboot");
+    __system("mkdir -p /sdcard/mkboot/zImage");
+    __system("mkdir -p /sdcard/mkboot/modules");
+    __system("rm /sdcard/mkboot/zImage/*");
+    __system("rm /sdcard/mkboot/modules/*");
+    delete_file("/tmp/mkboot");
+    __system("mkdir -p /tmp/mkboot");
+    __system("chmod 0755 /tmp/mkboot/");
+}
+
+int check_file_exists(const char* file_path)
+{
+struct stat st;
+if (0 != stat(file_path, &st)) {
+	LOGW("Error %s doesn't exist\n", file_path);
+	return -1;
+} else {
+	return 0;
+}
+}
+
+int is_dir(const char* file_path)
+/* dir ret 0, file ret 1, err ret -1 */
+{
+if (0 == (check_file_exists(file_path))) {
+	struct stat s;
+	stat(file_path, &s);
+if (!(S_ISDIR(s.st_mode))) {
+	return 0;
+} else if (!(S_ISREG(s.st_mode))) {
+	return 1;
+} else {
+	return -1;
+}
+
+}
+return -1;
+}
+
+
+int copy_file(const char* source, const char* dest)
+{
+/* need to add a check to see if dest dir exists and volume is mounted */
+
+if (0 == (is_dir(source))) {
+	char copy[PATH_MAX];
+	sprintf(copy, "cp -r %s %s", source, dest);
+	__system(copy);
+return 0;
+}
+
+if (1 == (is_dir(source))) {
+	char copy[PATH_MAX];
+	sprintf(copy, "cp %s %s", source, dest);
+	__system(copy);
+return 0;
+}
+
+return 1;
+}
+
+void do_module()
+{
+ensure_root_path_mounted("SYSTEM:");
+ensure_root_path_mounted("SDCARD:");
+delete_file("/system/lib/modules");
+copy_file("/sdcard/mkboot/modules", "/system/lib/modules");
+__system("chmod 0755 /system/lib/modules");
+__system("chmod 0644 /system/lib/modules/*");
+ensure_root_path_unmounted("SYSTEM:");
+ensure_root_path_unmounted("SDCARD:");
+}
+
+void do_make_new_boot()
+{
+setup_mkboot();
+ui_print("\nConnect phone to pc");
+ui_print("\nand copy new zImage and");
+ui_print("\nmodules to /sdcard/mkboot");
+ui_print("\nzImage & modules folder\n\n");
+usb_toggle_sdcard();
+ensure_root_path_mounted("SDCARD:");
+dump_device("boot");
+if (0 == (copy_file("/sdcard/mkboot/zImage/zImage", "/tmp/mkboot/zImage"))) {
+	unpack_boot();
+	do_module();
+	ui_print("New boot created and flashed!!\n\n");
+} else {
+	ui_print("Error missing /sdcard/mkboot/zImage/zImage\n\n");
+}
+delete_file("/tmp/mkboot");
+}
+
+void install_su(int eng_su)
+{
+
+ui_print("Working ......\n");
+ensure_root_path_mounted("SYSTEM:");
+ensure_root_path_mounted("DATA:");
+ensure_root_path_mounted("CACHE:");
+
+struct stat sd;
+        if (0 == stat("/dev/block/mmcblk1p2", &sd)) {
+ensure_root_path_mounted("SDEXT:");
+__system("rm /sd-ext/dalvik-cache/*com.noshufou.android.su*classes.dex");
+__system("rm -rf /sd-ext/data/com.noshufou.android.su");
+__system("rm /sd-ext/app/com.noshufou.android.su*.apk");
+__system("rm /sd-ext/dalvik-cache/*uperuser*classes.dex");
+ensure_root_path_unmounted("SDEXT:");
+}
+
+__system("rm -rf /data/data/com.noshufou.android.su");
+__system("rm /data/app/com.noshufou.android.su*.apk");
+__system("rm /data/dalvik-cache/*com.noshufou.android.su*classes.dex");
+__system("rm /data/dalvik-cache/*uperuser*classes.dex");
+
+__system("rm /cache/dalvik-cache/*com.noshufou.android.su*classes.dex");
+__system("rm /cache/dalvik-cache/*uperuser*classes.dex");
+
+__system("rm /system/app/*uperuser.apk");
+
+if ((0 == (check_file_exists("/system/bin/su"))) || (0 == (check_file_exists("/system/xbin/su"))) ){
+	ui_print("Removing old su\n");
+}
+delete_file("/system/bin/su");
+__system("rm /system/xbin/su");
+if (!eng_su) {
+	copy_file("/extra/su", "/system/bin/su");
+	copy_file("/extra/Superuser.apk", "/system/app/Superuser.apk");
+	__system("chmod 0644 /system/app/Superuser.apk");
+} else {
+	copy_file("/extra/suhack", "/system/bin/su");
+}
+__system("mkdir -p /system/xbin");
+__system("chmod 06755 /system/bin/su");
+__system("ln -s /system/bin/su /system/xbin/su");
+ensure_root_path_unmounted("DATA:");
+ensure_root_path_unmounted("SYSTEM:");
+ensure_root_path_unmounted("CACHE:");
+ui_print("su install complete\n\n");
+}
+
+int delete_file(const char* file)
+{
+/* need to add a check to see if volume is mounted */
+
+if (0 == (is_dir(file))) {
+	char del[PATH_MAX];
+	sprintf(del, "rm -rf %s ", file);
+	__system(del);
+	return 0;
+}
+
+if (1 == (is_dir(file))) {
+	char del[PATH_MAX];
+	sprintf(del, "rm %s ", file);
+	__system(del);
+	return 0;
+}
+
+return 1;
+}
+
+void rb_bootloader()
+{
+sync();
+ensure_root_path_unmounted("DATA:");
+ensure_root_path_unmounted("SYSTEM:");
+ensure_root_path_unmounted("CACHE:");
+ensure_root_path_unmounted("SDCARD:");
+ensure_root_path_unmounted("SDEXT:");
+__system("/sbin/reboot bootloader");
+}
+
+void rb_recovery()
+{
+sync();
+ensure_root_path_unmounted("DATA:");
+ensure_root_path_unmounted("SYSTEM:");
+ensure_root_path_unmounted("CACHE:");
+ensure_root_path_unmounted("SDCARD:");
+ensure_root_path_unmounted("SDEXT:");
+__system("/sbin/reboot recovery");
+}
+
+#ifdef USE_BIGDATA
+void bigdata_cleanup()
+{
+__system("/sbin/bigdata.sh cleanup");
+}
+#endif
+
