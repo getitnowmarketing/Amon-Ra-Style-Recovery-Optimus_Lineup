@@ -484,3 +484,25 @@ __system("/sbin/bigdata.sh cleanup");
 }
 #endif
 
+#ifdef LGE_RESET_BOOTMODE
+int lge_direct_mtd_access(char *boot_mode)
+{
+/* using lge kernel api as in lge_mtd_direct_access.c */
+ FILE * ldma = fopen("/sys/module/lge_mtd_direct_access/parameters/write_block","r+");
+
+if (ldma != NULL) {
+	fputs (boot_mode,ldma);
+	fclose(ldma);
+	return 0;
+} else {
+	fclose(ldma);
+	return -1;
+}
+}
+#endif
+
+
+
+
+    
+

@@ -41,6 +41,9 @@ ifeq ($(TARGET_HAS_WIMAX),true)
 LOCAL_CFLAGS += -DHAS_WIMAX
 endif
 
+ifeq ($(NEEDS_LGE_FACT_RESET_6),true)
+LOCAL_CFLAGS += -DLGE_RESET_BOOTMODE
+endif
 
 
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.

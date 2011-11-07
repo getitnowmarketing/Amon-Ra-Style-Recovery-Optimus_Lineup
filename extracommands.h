@@ -74,3 +74,9 @@ bigdata_cleanup();
 
 #endif
 
+#ifdef LGE_RESET_BOOTMODE
+int
+lge_direct_mtd_access(char *boot_mode);
+#endif
+
+
