@@ -45,6 +45,9 @@ ifeq ($(NEEDS_LGE_FACT_RESET_6),true)
 LOCAL_CFLAGS += -DLGE_RESET_BOOTMODE
 endif
 
+ifeq ($(TARGET_USES_CAF_QCOMM_MTD_RADIO),true)
+LOCAL_CFLAGS += -DUSES_QCOMM_RADIO
+endif
 
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.
 # It gets copied there in config/Makefile.  LOCAL_MODULE_TAGS suppresses
