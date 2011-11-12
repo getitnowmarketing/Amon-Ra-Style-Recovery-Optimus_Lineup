@@ -191,10 +191,6 @@ get_args(int *argc, char ***argv) {
             LOGI("Got arguments from boot message\n");
         } else if (boot.recovery[0] != 0 && boot.recovery[0] != 255) {
             LOGW("Bad boot message\n\"%.20s\"\n", boot.recovery);
-#ifdef LGE_RESET_BOOTMODE
-	    lge_direct_mtd_access("6");
-	    LOGW("LGE FACT_RESET_6 SET");
-#endif
         }
     }
 
@@ -228,7 +224,6 @@ get_args(int *argc, char ***argv) {
     }
     set_bootloader_message(&boot);
 }
-
 
 // clear the recovery command and prepare to boot a (hopefully working) system,
 // copy our log file to cache as well (for the system to read), and
@@ -309,6 +304,168 @@ erase_root(const char *root)
     return format_root_device(root);
 }
 
+
+
+static void
+show_menu_nandroid_restore(const char *selected_restore)
+{
+   static char* headers[] = { "What do you want to restore?",
+			       "",
+			       NULL };
+				   
+	char* items[] = {       "- [X] boot",
+				"- [X] system",
+				"- [X] data",
+				"- [X] cache",
+				"- [ ] recovery",
+				"- [ ] sd-ext",
+				"- [X] .android_secure",
+#ifdef HAS_WIMAX		
+				"- [ ] wimax",
+#endif
+
+#ifdef USE_BIGDATA	
+				"- [ ] ext-data.img",
+#endif
+				"- Perform Restore",
+		NULL};
+
+	static char* items_in[] = { 
+				"- [X] boot",
+				"- [X] system",
+				"- [X] data",
+				"- [X] cache",
+				"- [X] recovery",
+				"- [X] sd-ext",
+				"- [X] .android_secure",
+#ifdef HAS_WIMAX		
+				"- [X] wimax",
+#endif
+
+#ifdef USE_BIGDATA
+				"- [X] ext-data.img",
+#endif
+				"- Perform Restore",
+		NULL};
+	
+	static char* items_out[] = { 
+				"- [ ] boot",
+				"- [ ] system",
+				"- [ ] data",
+				"- [ ] cache",
+				"- [ ] recovery",
+				"- [ ] sd-ext",
+				"- [ ] .android_secure",
+#ifdef HAS_WIMAX		
+				"- [ ] wimax",
+#endif
+
+#ifdef USE_BIGDATA
+				"- [ ] ext-data.img",
+#endif
+				"- Perform Restore",
+               	NULL};
+
+	
+	ui_start_menu(headers, items);
+        int selected = 0;
+        int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int visible = ui_text_visible();
+
+        if (key == GO_BACK) {
+            break;
+        } else if ((key == DN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == SELECT) && visible ) {
+            chosen_item = selected;
+        }
+        
+        if (chosen_item >= 0) {
+
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+#if defined (USE_BIGDATA) && defined (HAS_WIMAX)
+	    if (chosen_item < 9) {
+#elif defined (USE_BIGDATA)
+            if (chosen_item < 8) {
+#elif defined (HAS_WIMAX)
+	    if (chosen_item < 8) {
+#else
+	    if (chosen_item < 7) {
+#endif
+		   // Rebuild items
+		   if (items[chosen_item]==items_in[chosen_item]) {
+	               items[chosen_item]=items_out[chosen_item];
+	           } else {
+	               items[chosen_item]=items_in[chosen_item];
+	           }
+
+            } else {
+
+	      char nandroid_command[1024];
+	      strcpy(nandroid_command, "/sbin/nandroid-mobile.sh -r --nomisc --nosplash1 --nosplash2 --defaultinput");
+
+                int i=0;
+		while (items[i])
+		{
+
+
+				if (strcmp( items[i], "- [X] sd-ext") == 0) strcat(nandroid_command, " -e");
+				if (strcmp( items[i], "- [X] .android_secure") == 0) strcat(nandroid_command, " -a");
+				if (strcmp( items[i], "- [ ] recovery") == 0) strcat(nandroid_command, " --norecovery");
+				if (strcmp( items[i], "- [ ] boot") == 0) strcat(nandroid_command, " --noboot");
+				if (strcmp( items[i], "- [ ] data") == 0) strcat(nandroid_command, " --nodata");
+				if (strcmp( items[i], "- [ ] system") == 0) strcat(nandroid_command, " --nosystem");
+				if (strcmp( items[i], "- [ ] cache") == 0) strcat(nandroid_command, " --nocache");
+#ifdef HAS_WIMAX		
+				if (strcmp( items[i], "- [X] wimax")  == 0) strcat(nandroid_command, " --wimax");
+#endif
+
+#ifdef USE_BIGDATA		
+				if (strcmp( items[i], "- [X] ext-data.img")  == 0) strcat(nandroid_command, " --bigdata");
+#endif
+                	        
+		i++;	
+		}
+				strcat(nandroid_command, " -s ");
+				strlcat(nandroid_command, selected_restore, sizeof(nandroid_command));				
+				ui_print("Restore: %s\n", selected_restore);
+
+			run_script("\nRestore backup ?",
+				   "\nRestoring : ",
+				   nandroid_command,
+				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nRestore complete!\n\n",
+				   "\nRestore aborted!\n\n");
+
+            }
+
+            ui_start_menu(headers, items);
+            chosen_item = -1;
+            selected = 0;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+        } 
+
+    }
+	
+}
 
 
 static void
@@ -419,49 +576,7 @@ choose_nandroid_file(const char *nandroid_folder)
         }
 
         if (chosen_item >= 0) {
-            // turn off the menu, letting ui_print() to scroll output
-            // on the screen.
-            ui_end_menu();
-
-            ui_print("\nRestore ");
-            ui_print(list[chosen_item]);
-            ui_clear_key_queue();
-            ui_print(" ?\nPress %s to confirm,", CONFIRM);
-            ui_print("\nany other key to abort.\n");
-            int confirm_apply = ui_wait_key();
-            if (confirm_apply == SELECT) {
-                      
-                            ui_print("\nRestoring : ");
-       		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e -a --bigdata --wimax --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
-
-			    strlcat(nandroid_command, list[chosen_item], sizeof(nandroid_command));
-
-                            pid_t pid = fork();
-                            if (pid == 0) {
-                                char *args[] = {"/sbin/sh", "-c", nandroid_command , "1>&2", NULL};
-                                execv("/sbin/sh", args);
-                                fprintf(stderr, "\nCan't run nandroid-mobile.sh\n(%s)\n", strerror(errno));
-        	                _exit(-1);
-                            }
-
-                            int status3;
-
-                            while (waitpid(pid, &status3, WNOHANG) == 0) {
-                                ui_print(".");
-                                sleep(1);
-                            } 
-                            ui_print("\n");
-
-                           if (!WIFEXITED(status3) || (WEXITSTATUS(status3) != 0)) {
-                               ui_print("\nOops... something went wrong!\nPlease check the recovery log!\n\n");
-                          } else {
-                                ui_print("\nRestore complete!\n\n");
-                          }
-
-                        
-            } else {
-                ui_print("\nRestore aborted.\n");
-            }
+            show_menu_nandroid_restore(list[chosen_item]);
             if (!ui_text_visible()) break;
             break;
         }
@@ -2383,7 +2498,7 @@ show_menu_developer()
 
 #ifdef LGE_RESET_BOOTMODE
 		case ITEM_DEV_RESET_LGE_BM:
-				lge_direct_mtd_access("6");
+				lge_direct_mtd_access_write("6");
 			break;
 #endif
 			
@@ -2600,6 +2715,13 @@ main(int argc, char **argv)
 #if TEST_AMEND
     test_amend();
 #endif
+
+#ifdef LGE_RESET_BOOTMODE
+if (!lge_fact_reset_checked) {
+	lge_direct_mtd_access_read();
+}
+#endif
+
 
     RecoveryCommandContext ctx = { NULL };
     if (register_update_commands(&ctx)) {

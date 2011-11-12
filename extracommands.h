@@ -76,7 +76,13 @@ bigdata_cleanup();
 
 #ifdef LGE_RESET_BOOTMODE
 int
-lge_direct_mtd_access(char *boot_mode);
+lge_direct_mtd_access_write(char *boot_mode);
+
+extern int
+lge_fact_reset_checked;
+
+int lge_direct_mtd_access_read();
+
 #endif
 
 

@@ -485,20 +485,49 @@ __system("/sbin/bigdata.sh cleanup");
 #endif
 
 #ifdef LGE_RESET_BOOTMODE
-int lge_direct_mtd_access(char *boot_mode)
+
+int lge_fact_reset_checked = 0;
+
+int lge_direct_mtd_access_write(char *boot_mode)
 {
 /* using lge kernel api as in lge_mtd_direct_access.c */
- FILE * ldma = fopen("/sys/module/lge_mtd_direct_access/parameters/write_block","r+");
+ FILE * ldmaw = fopen("/sys/module/lge_mtd_direct_access/parameters/write_block","r+");
 
-if (ldma != NULL) {
-	fputs (boot_mode,ldma);
-	fclose(ldma);
+if (ldmaw != NULL) {
+	fputs (boot_mode,ldmaw);
+	fclose(ldmaw);
 	return 0;
+LOGW("LGE_FACT_RESET_6 set\n\n");
 } else {
-	fclose(ldma);
+	fclose(ldmaw);
 	return -1;
 }
 }
+
+
+int lge_direct_mtd_access_read()
+{
+char read_lge[2];
+
+FILE * ldmar = fopen("/sys/module/lge_mtd_direct_access/parameters/read_block","r");
+
+if (ldmar != NULL) {
+fgets(read_lge, 2, ldmar);
+    fclose(ldmar);
+} else {
+	return -1;
+}
+if (!strcmp(read_lge, "3")) {
+	LOGW("LGE FACT_RESET_%s detected\n", read_lge);
+	lge_direct_mtd_access_write("6");
+	ui_print("LGE_FACT_RESET_6 set\n\n");
+} else {
+	LOGW("LGE FACT_RESET_%s detected\n", read_lge);
+}
+lge_fact_reset_checked = !lge_fact_reset_checked;
+return 0;
+}
+
 #endif
 
 
