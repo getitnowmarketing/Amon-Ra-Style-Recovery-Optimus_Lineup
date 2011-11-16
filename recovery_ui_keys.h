@@ -1,5 +1,16 @@
 /* Getitnowmarketing 10/29/11 
-added to define recovery keys so recovery keys can easily be changed for new devices */
+added to define recovery keys so recovery keymapping can easily be changed for new devices */
+
+extern int device_handle_key(int key, int visible);
+
+#define NO_ACTION     		-1
+#define HIGHLIGHT_UP           	-2
+#define HIGHLIGHT_DOWN         	-3
+#define SELECT_ITEM        	-4
+#define GO_BACK       		-5
+
+
+/* Begin Device Specific Here */
 
 #ifdef DEFAULT_RECOVERY_UI_KEYS
 
@@ -7,11 +18,9 @@ added to define recovery keys so recovery keys can easily be changed for new dev
 #define UNCONFIRM_TXT "or press BACK to return"
 #define UPDOWNTXT "Vol Up/Down"
 
-/* these are defined in device's kernel input.h */
-#define SELECT KEY_MENU
-#define UP KEY_VOLUMEUP
-#define DN KEY_VOLUMEDOWN
-#define GO_BACK KEY_BACK
+#define RB_KEY1 	KEY_MENU
+#define RB_KEY2 	KEY_VOLUMEDOWN
+#define RB_KEY3 	KEY_VOLUMEUP
 
 #endif
 
@@ -21,11 +30,10 @@ added to define recovery keys so recovery keys can easily be changed for new dev
 #define UNCONFIRM_TXT "or press BACK to return"
 #define UPDOWNTXT "Vol Up/Down"
 
-/* these are defined in device's kernel input.h */
-#define SELECT KEY_END
-#define UP KEY_VOLUMEUP
-#define DN KEY_VOLUMEDOWN
-#define GO_BACK 248
+#define RB_KEY1 	KEY_END
+#define RB_KEY2 	KEY_VOLUMEDOWN
+#define RB_KEY3 	KEY_VOLUMEUP
+
 
 #endif
 
@@ -35,10 +43,9 @@ added to define recovery keys so recovery keys can easily be changed for new dev
 #define UNCONFIRM_TXT "or press VOL-DOWN to return"
 #define UPDOWNTXT "Up/Down"
 
-#define SELECT BTN_MOUSE
-#define UP KEY_UP
-#define DN KEY_DOWN
-#define GO_BACK KEY_VOLUMEDOWN
+#define RB_KEY1 	KEY_POWER
+#define RB_KEY2 	KEY_VOLUMEDOWN
+#define RB_KEY3 	KEY_VOLUMEUP
 
 #endif
 
@@ -48,11 +55,9 @@ added to define recovery keys so recovery keys can easily be changed for new dev
 #define UNCONFIRM_TXT "or press BACK to return"
 #define UPDOWNTXT "Vol Up/Down"
 
-/* these are defined in device's kernel input.h */
-#define SELECT KEY_POWER
-#define UP KEY_VOLUMEUP
-#define DN KEY_VOLUMEDOWN
-#define GO_BACK KEY_BACK
+#define RB_KEY1 	KEY_POWER
+#define RB_KEY2 	KEY_VOLUMEDOWN
+#define RB_KEY3 	KEY_VOLUMEUP
 
 #endif
 

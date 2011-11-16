@@ -70,9 +70,8 @@ void key_logger_test()
 		
 		for (;;) {
 		int key = ui_wait_key();
-                //int visible = ui_text_visible();
-
-		if (key == GO_BACK) {
+                int action_key = device_handle_key(key, 1);
+    		if (action_key == GO_BACK) {
                    break;
                
 		} else  {   
@@ -88,7 +87,8 @@ void run_script(char *str1,char *str2,char *str3,char *str4,char *str5,char *str
 	ui_print("\nPress %s to confirm,", CONFIRM);
        	ui_print("\nany other key to abort.\n");
 	int confirm = ui_wait_key();
-		if (confirm == SELECT) {
+	int action_confirm_rs = device_handle_key(confirm, 1);
+    				if (action_confirm_rs == SELECT_ITEM) {
                 	ui_print(str2);
 		        pid_t pid = fork();
                 	if (pid == 0) {
@@ -214,7 +214,8 @@ void usb_toggle_sdcard()
 				ui_print("\nand return to menu\n");
 		       		for (;;) {
         	                        	int key = ui_wait_key();
-						if (key == SELECT) {
+						int action_key = device_handle_key(key, 1);
+    						if (action_key == SELECT_ITEM) {
 							ui_print("\nDisabling USB-MS : ");
 						        pid_t pid = fork();
 				                	if (pid == 0) {
@@ -359,7 +360,6 @@ ensure_root_path_mounted("SYSTEM:");
 ensure_root_path_mounted("SDCARD:");
 delete_file("/system/lib/modules");
 copy_file("/sdcard/mkboot/modules", "/system/lib/modules");
-__system("chmod 0755 /system/lib/modules");
 __system("chmod 0644 /system/lib/modules/*");
 ensure_root_path_unmounted("SYSTEM:");
 ensure_root_path_unmounted("SDCARD:");
