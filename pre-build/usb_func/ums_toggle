@@ -8,12 +8,12 @@ fi
 
 case $1 in
     on)
-	echo /dev/block/mmcblk0p1 > /sys/devices/platform/msm_hsusb/gadget/lun0/file
+	echo /dev/block/mmcblk0p1 > /sys/devices/platform/usb_mass_storage/lun0/file
 	echo "USB Mass Storage enabled"
         ;;
     off)
 	sync
-	echo "" > /sys/devices/platform/msm_hsusb/gadget/lun0/file
+	echo "" > /sys/devices/platform/usb_mass_storage/lun0/file
 	echo "USB Mass Storage disabled"
         ;;
     --)
